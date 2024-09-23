@@ -5,6 +5,12 @@ VisualStudioVersion = 17.10.35027.167
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "OrgBot", "OrgBot\OrgBot.csproj", "{89ED9CB7-C3F0-4E58-9B26-726F7EC1A9D9}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{87EEFE1E-ACB7-4825-B3D6-06BA2533200E}"
+	ProjectSection(SolutionItems) = preProject
+		install.sh = install.sh
+		install_docker.sh = install_docker.sh
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
