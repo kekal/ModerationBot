@@ -13,5 +13,6 @@ WORKDIR /app
 COPY --from=build /app/out ./
 
 ENV BOT_TOKEN=YOUR_BOT_TOKEN
+ENV BOT_TOKEN=YOUR_TELEGRAM_ID
 
 ENTRYPOINT ["dotnet", "OrgBot.dll"]

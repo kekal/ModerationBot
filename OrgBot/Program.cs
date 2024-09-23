@@ -10,11 +10,12 @@ namespace OrgBot;
 public static class Program
 {
     private const uint LogSize = 30;
-    private const double Timeout = 1;
+    private const double Timeout = 60;
     private static readonly BotSettings Settings = new();
     private static long? _ownerId;
     private static bool _engaged = true;
     private static readonly List<string> ActionLog = [];
+    private static CancellationTokenSource _cts = new CancellationTokenSource();
     
 
     public static async Task Main()
@@ -43,35 +44,37 @@ public static class Program
 
             await SetCommandsAsync(client);
 
-            using var cts = new CancellationTokenSource();
             var receiverOptions = new ReceiverOptions
             {
                 AllowedUpdates = [UpdateType.Message]
             };
 
-            var me = await client.GetMeAsync(cts.Token);
-
-            
-
-            await client.SendContactAsync(ownerId, me.Id.ToString(), " Bot service ", null, "has been started", cancellationToken: cts.Token);
-
-            client.StartReceiving(
-                HandleUpdateAsync,
-                PollingErrorHandler,
-                receiverOptions,
-                cts.Token
-            );
-
-            
+            var me = await client.GetMeAsync(_cts.Token);
             Console.WriteLine($"Start listening for @{me.Username} ({me.Id})");
 
-            var waitForCancellation = new TaskCompletionSource();
-            await using (cts.Token.Register(waitForCancellation.SetResult))
-            {
-                await waitForCancellation.Task;
-            }
+            await client.SendContactAsync(ownerId, me.Id.ToString(), " Bot service ", null, "has been started", cancellationToken: _cts.Token);
 
-            await cts.CancelAsync();
+            var updateOffset = 0;
+            while (!_cts.Token.IsCancellationRequested)
+            {
+                var updates = await client.GetUpdatesAsync(
+                    offset: updateOffset,
+                    limit: 100,
+                    timeout: 30,
+                    allowedUpdates: [UpdateType.Message],
+                    cancellationToken: _cts.Token);
+
+                foreach (var update in updates)
+                {
+                    if (_cts.Token.IsCancellationRequested)
+                        break;
+
+                    await HandleUpdateAsync(client, update, _cts.Token);
+
+                    updateOffset = update.Id + 1;
+                    await Task.Delay(1000, _cts.Token);
+                }
+            }
         }
         catch (Exception e)
         {
@@ -97,6 +100,7 @@ public static class Program
             new BotCommand { Command = "log", Description = $"Show the last {LogSize} actions" },
             new BotCommand { Command = "engage", Description = "Start processing updates" },
             new BotCommand { Command = "disengage", Description = "Stop processing updates" },
+            new BotCommand { Command = "restart_service", Description = "Restarting the service" },
             new BotCommand { Command = "exit", Description = "Stop the bot" },
             new BotCommand { Command = "help", Description = "Show available commands" }
         };
@@ -104,15 +108,6 @@ public static class Program
         await client.SetMyCommandsAsync(groupCommands, new BotCommandScopeAllGroupChats());
 
         await client.SetMyCommandsAsync(privateCommands, new BotCommandScopeAllPrivateChats());
-    }
-
-    private static async Task PollingErrorHandler(ITelegramBotClient client, Exception exception, CancellationToken token)
-    {
-        await Console.Error.WriteLineAsync(exception switch
-        {
-            ApiRequestException apiRequestException => PrintApiError(apiRequestException),
-            _ => exception.ToString()
-        });
     }
 
     private static async Task HandleUpdateAsync(ITelegramBotClient client, Update update, CancellationToken cancellationToken)
@@ -188,17 +183,24 @@ public static class Program
                 await client.SendTextMessageAsync(message.Chat.Id, "Bot is now disengaged and will not process updates.", cancellationToken: cancellationToken);
                 break;
 
-            // case "/exit":
-            //     await client.SendTextMessageAsync(message.Chat.Id, "Bot is shutting down.", cancellationToken: cancellationToken);
-            //     if (_ownerId != null) await client.SendContactAsync(_ownerId, client.BotId.ToString() ?? string.Empty, "Bot service ", null, "has been stopped", cancellationToken: cancellationToken);
-            //     Environment.Exit(0); // Stop service
-            //     break;
+            case "/restart_service":
+                await client.SendTextMessageAsync(message.Chat.Id, "Restarting the service.", cancellationToken: cancellationToken);
+                Environment.Exit(42);  // Upgrade
+                break;
+
+
+            case "/exit":
+                await client.SendTextMessageAsync(message.Chat.Id, "Bot is shutting down.", cancellationToken: cancellationToken);
+                if (_ownerId != null) await client.SendContactAsync(_ownerId, client.BotId.ToString() ?? string.Empty, "Bot service ", null, "has been stopped", cancellationToken: cancellationToken);
+                Environment.Exit(0); // Stop service
+                break;
 
             case "/help":
                 const string privateHelpText = "Available commands:\n" +
                                                "/log - Show the last 30 actions\n" +
                                                "/engage - Start processing updates\n" +
                                                "/disengage - Stop processing updates\n" +
+                                               "/restart_service - Restarting the service\n" +
                                                "/exit - Stop the bot\n" +
                                                "/help - Show this help message";
                 await client.SendTextMessageAsync(message.Chat.Id, privateHelpText, cancellationToken: cancellationToken);

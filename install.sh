@@ -24,6 +24,9 @@ echo "OWNER: $OWNER"
 
 # Function to build and run the Docker container
 build_and_run() {
+
+  cd OrgBot
+  
   # Stop and remove any existing container
   docker stop telegram_bot_container || true
   docker rm telegram_bot_container || true
@@ -54,6 +57,8 @@ build_and_run() {
   docker image prune -f
 
   echo "Deployment completed successfully."
+
+  cd ..
 }
 
 # Function to fetch updates from GitHub
@@ -62,14 +67,17 @@ fetch_updates() {
   git remote add origin https://github.com/kekal/ModerationBot || true
   git fetch origin
   git reset --hard origin/master
-  git clean -xdf
+  # git clean -xdf
 }
 
 # Main script logic
 while true; do
+  # Fetch updates from GitHub, including the script itself
+  fetch_updates
+
   # Build and run the bot
   build_and_run
-
+  
   # Wait for the container to exit
   echo "Waiting for the bot to exit..."
   docker wait telegram_bot_container
@@ -80,9 +88,6 @@ while true; do
   # Check if the exit code indicates a restart
   if [ "$exit_code" -eq 42 ]; then
       echo "Service restart requested."
-
-      # Fetch updates from GitHub, including the script itself
-      fetch_updates
 
       # Restart the script with the same arguments
       echo "Restarting the deployment script..."
