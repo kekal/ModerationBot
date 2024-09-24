@@ -11,6 +11,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		install_docker.sh = install_docker.sh
 	EndProjectSection
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "OrgBot.Tests", "Tests\OrgBot.Tests.csproj", "{F2B31CD0-F2E6-4D06-97EA-D7A10C8EDD01}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{89ED9CB7-C3F0-4E58-9B26-726F7EC1A9D9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{89ED9CB7-C3F0-4E58-9B26-726F7EC1A9D9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{89ED9CB7-C3F0-4E58-9B26-726F7EC1A9D9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F2B31CD0-F2E6-4D06-97EA-D7A10C8EDD01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F2B31CD0-F2E6-4D06-97EA-D7A10C8EDD01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F2B31CD0-F2E6-4D06-97EA-D7A10C8EDD01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F2B31CD0-F2E6-4D06-97EA-D7A10C8EDD01}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

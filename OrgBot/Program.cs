@@ -1,23 +1,20 @@
-﻿using Microsoft.Extensions.Logging;
-using System.Text;
-using Telegram.Bot;
+﻿using System.Text;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
-using Telegram.Bot.Types.ReplyMarkups;
 
 namespace OrgBot;
 
 public static class Program
 {
     private const uint LogSize = 30;
-    private const double Timeout = 1;
+    private const double ThrottlingTimeout = 2;
     private static readonly BotSettings Settings = new();
     private static long? _ownerId;
     private static bool _engaged = true;
     private static readonly List<string> ActionLog = [];
     private static readonly CancellationTokenSource Cts = new();
-    private static TelegramLogger Logger { get; } = new(ActionLog);
+    private static TelegramLogger Logger { get; } = new(ActionLog, LogSize);
 
 
     public static async Task Main()
@@ -39,11 +36,8 @@ public static class Program
                 await Logger.LogInformationAsync($"Bot will work only for chats created by the user {_ownerId}");
             }
 
-            var client = new ThrottledTelegramBotClient(botToken, null, TimeSpan.FromSeconds(Timeout))
-            {
-                Timeout = TimeSpan.FromSeconds(60)
-            };
-
+            using var client = new ThrottledTelegramBotClient(new TelegramBotWrapper(botToken), TimeSpan.FromSeconds(ThrottlingTimeout));
+            
             await SetCommandsAsync(client);
 
             var me = await client.GetMeAsync(Cts.Token);
@@ -64,12 +58,13 @@ public static class Program
                 foreach (var update in updates)
                 {
                     if (Cts.Token.IsCancellationRequested)
+                    {
                         break;
+                    }
 
                     await HandleUpdateAsync(client, update, Cts.Token);
 
                     updateOffset = update.Id + 1;
-                    await Task.Delay(2000, Cts.Token);
                 }
             }
         }
@@ -129,10 +124,11 @@ public static class Program
         {
             await Logger.LogErrorAsync(PrintApiError(ex));
   
-            if (ex.ErrorCode == 429)
+            if (ex is { ErrorCode: 429, Parameters.RetryAfter: not null })
             {
-                await Logger.LogErrorAsync("Api is overloaded. Set timeout 30 seconds.");
-                await Task.Delay(35000, cancellationToken);
+                var retryAfter = ex.Parameters.RetryAfter.Value;
+                await Logger.LogErrorAsync($"API rate limit exceeded. Retrying after {(int)(retryAfter * 1.1)} seconds.");
+                await Task.Delay(retryAfter * 1100, cancellationToken);
             }
         }
         catch (Exception e)
@@ -188,6 +184,7 @@ public static class Program
 
             case "/restart_service":
                 await client.SendTextMessageAsync(message.Chat.Id, "Restarting the service.", cancellationToken: cancellationToken);
+                await Cts.CancelAsync();
                 Environment.Exit(42);  // Upgrade
                 break;
 
@@ -195,6 +192,7 @@ public static class Program
             case "/exit":
                 await client.SendTextMessageAsync(message.Chat.Id, "Bot is shutting down.", cancellationToken: cancellationToken);
                 if (_ownerId != null) await client.SendContactAsync(_ownerId, client.BotId.ToString() ?? string.Empty, "Bot service ", null, "has been stopped", cancellationToken: cancellationToken);
+                await Cts.CancelAsync();
                 Environment.Exit(0); // Stop service
                 break;
 
@@ -442,14 +440,6 @@ public static class Program
                 var chatId = message.Chat.Id.ToString();
                 chatId = chatId.StartsWith("-100") ? chatId["-100".Length..] : chatId;
                 await Logger.LogInformationAsync($"{actionTaken} user {user} in chat {message.Chat.Title}. Deleted message: https://t.me/c/{chatId}/{message.MessageId}");
-
-                lock (ActionLog)
-                {
-                    if (ActionLog.Count > LogSize)
-                    {
-                        ActionLog.RemoveAt(0);
-                    }
-                }
         }
     }
 
@@ -508,127 +498,5 @@ public static class Program
         var channelId = discussionGroup.LinkedChatId;
 
         return message.ReplyToMessage.SenderChat.Id == channelId;
-    }
-}
-
-
-
-public class ThrottledTelegramBotClient : TelegramBotClient
-{
-    private readonly TelegramBotClient _client;
-    private readonly SemaphoreSlim _semaphore = new(1, 1);
-    private readonly TimeSpan _delayBetweenRequests;
-
-
-    public ThrottledTelegramBotClient(TelegramBotClientOptions options, HttpClient? httpClient, TimeSpan delayBetweenRequests) : base(options, httpClient)
-    {
-        _delayBetweenRequests = delayBetweenRequests;
-        _client = this;
-    }
-
-    public ThrottledTelegramBotClient(string token, HttpClient? httpClient, TimeSpan delayBetweenRequests) : base(token, httpClient)
-    {
-        _delayBetweenRequests = delayBetweenRequests;
-        _client = this;
-    }
-
-    private async Task<TResult> ExecuteWithDelayAsync<TResult>(Func<Task<TResult>> apiCall)
-    {
-        await _semaphore.WaitAsync();
-        try
-        {
-            var result = await apiCall();
-            await Task.Delay(_delayBetweenRequests);
-            return result;
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-    }
-
-    private async Task ExecuteWithDelayAsync(Func<Task> apiCall)
-    {
-        await _semaphore.WaitAsync();
-        try
-        {
-            await apiCall();
-            await Task.Delay(_delayBetweenRequests);
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-    }
-
-    public Task<User> GetMeAsync(CancellationToken cancellationToken = default) => 
-        ExecuteWithDelayAsync(() => _client.GetMeAsync(cancellationToken));
-
-    public Task SetMyCommandsAsync(IEnumerable<BotCommand> commands, BotCommandScope? scope = default, string? languageCode = default, CancellationToken cancellationToken = default) => 
-        ExecuteWithDelayAsync(() => _client.SetMyCommandsAsync(commands, scope, languageCode, cancellationToken));
-
-    public Task<Message> SendContactAsync(ChatId chatId, string phoneNumber, string firstName, int? messageThreadId = default, string? lastName = default, string? vCard = default, bool? disableNotification = default, bool? protectContent = default, int? replyToMessageId = default, bool? allowSendingWithoutReply = default, IReplyMarkup? replyMarkup = default, CancellationToken cancellationToken = default) =>
-        ExecuteWithDelayAsync(() => _client.SendContactAsync(chatId, phoneNumber, firstName, messageThreadId, lastName, vCard, disableNotification, protectContent, replyToMessageId, allowSendingWithoutReply, replyMarkup, cancellationToken));
-
-    public Task LeaveChatAsync(ChatId chatId, CancellationToken cancellationToken = default) =>
-        ExecuteWithDelayAsync(() => _client.LeaveChatAsync(chatId, cancellationToken));
-
-    public Task DeleteMessageAsync(ChatId chatId, int messageId, CancellationToken cancellationToken = default) =>
-        ExecuteWithDelayAsync(() => _client.DeleteMessageAsync(chatId, messageId, cancellationToken));
-
-    public Task BanChatSenderChatAsync(ChatId chatId, long senderChatId, CancellationToken cancellationToken = default) =>
-        ExecuteWithDelayAsync(() => _client.BanChatSenderChatAsync(chatId, senderChatId, cancellationToken));
-
-    public Task BanChatMemberAsync(ChatId chatId, long userId, DateTime? untilDate = null, bool revokeMessages = false, CancellationToken cancellationToken = default) =>
-        ExecuteWithDelayAsync(() => _client.BanChatMemberAsync(chatId, userId, untilDate, revokeMessages, cancellationToken));
-
-    public Task RestrictChatMemberAsync(ChatId chatId, long userId, ChatPermissions permissions, bool? useIndependentChatPermissions = default, DateTime? untilDate = default, CancellationToken cancellationToken = default) =>
-        ExecuteWithDelayAsync(() => _client.RestrictChatMemberAsync(chatId, userId, permissions, useIndependentChatPermissions, untilDate, cancellationToken));
-
-    public Task<ChatMember[]> GetChatAdministratorsAsync(ChatId chatId, CancellationToken cancellationToken = default) =>
-        ExecuteWithDelayAsync(() => _client.GetChatAdministratorsAsync(chatId, cancellationToken));
-
-    public Task<Chat> GetChatAsync(ChatId chatId, CancellationToken cancellationToken = default) =>
-        ExecuteWithDelayAsync(() => _client.GetChatAsync(chatId, cancellationToken));
-}
-
-
-public class BotSettings
-{
-    public bool BanUsers { get; set; }
-    public TimeSpan SpamTimeWindow { get; set; } = TimeSpan.FromSeconds(10);
-    public TimeSpan? RestrictionDuration { get; set; } = TimeSpan.FromDays(1); // null for permanent ban/mute
-    public bool SilentMode { get; set; }
-    public bool UseMute { get; set; } = true;
-}
-
-
-
-
-
-internal class TelegramLogger(IList<string> actionList) : ILogger
-{
-    private IList<string> ActionLog { get; set; } = actionList;
-    public IDisposable BeginScope<TState>(TState state) where TState : notnull => null!;
-    public bool IsEnabled(LogLevel logLevel) => true;
-
-
-    public async Task LogInformationAsync(string message) => await LogAsync(LogLevel.Information, message);
-    public async Task LogErrorAsync(string message) => await LogAsync(LogLevel.Error, message);
-
-    private async Task LogAsync(LogLevel logLevel, string message)
-    {
-        var formattedMessage = $"[{DateTime.UtcNow}] {message}";
-        ActionLog.Add(formattedMessage);
-
-        if (logLevel == LogLevel.Error)
-            await Console.Error.WriteLineAsync(formattedMessage);
-        else
-            await Console.Out.WriteLineAsync(formattedMessage);
-    }
-
-    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-    {
-        LogAsync(logLevel, state?.ToString() ?? string.Empty).Wait();
     }
 }
