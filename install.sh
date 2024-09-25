@@ -59,7 +59,7 @@ fetch_updates() {
   git remote add origin https://github.com/kekal/ModerationBot || true
   git fetch origin
   git reset --hard origin/master
-  # git clean -xdf
+  git clean -df
 }
 
 # Main
