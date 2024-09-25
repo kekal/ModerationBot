@@ -60,6 +60,8 @@ fetch_updates() {
   git fetch origin
   git reset --hard origin/master
   git clean -df
+
+  chmod +x install.sh
 }
 
 # Main
