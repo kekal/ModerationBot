@@ -70,6 +70,16 @@ public class BotLogic(string botToken, long? ownerId)
                 }
             }
         }
+        catch (ApiRequestException ex)
+        {
+            await Logger!.LogErrorAsync(PrintApiError(ex));
+
+            if (ex is { ErrorCode: 429, Parameters.RetryAfter: not null })
+            {
+                var retryAfter = ex.Parameters.RetryAfter.Value;
+                await Logger.LogErrorAsync($"API rate limit exceeded. Retrying after {retryAfter} seconds.");
+            }
+        }
         catch (Exception e)
         {
             await Logger!.LogErrorAsync(e.ToString());
