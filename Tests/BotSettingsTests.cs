@@ -1,6 +1,3 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using System;
-
 namespace OrgBot.Tests;
 
 [TestClass]
@@ -24,14 +21,14 @@ public class BotSettingsTests
     public void TestPropertySetters()
     {
         // Arrange
-        var settings = new BotSettings();
-
-        // Act
-        settings.BanUsers = true;
-        settings.UseMute = false;
-        settings.SpamTimeWindow = TimeSpan.FromSeconds(30);
-        settings.RestrictionDuration = TimeSpan.FromHours(5);
-        settings.SilentMode = true;
+        var settings = new BotSettings
+        {
+            BanUsers = true,
+            UseMute = false,
+            SpamTimeWindow = TimeSpan.FromSeconds(30),
+            RestrictionDuration = TimeSpan.FromHours(5),
+            SilentMode = true
+        };
 
         // Assert
         Assert.IsTrue(settings.BanUsers);
@@ -45,10 +42,10 @@ public class BotSettingsTests
     public void TestRestrictionDurationNull()
     {
         // Arrange
-        var settings = new BotSettings();
-
-        // Act
-        settings.RestrictionDuration = null;
+        var settings = new BotSettings
+        {
+            RestrictionDuration = null
+        };
 
         // Assert
         Assert.IsNull(settings.RestrictionDuration);

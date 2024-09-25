@@ -2,9 +2,9 @@
 
 namespace OrgBot;
 
-public class TelegramLogger(IList<string> actionList, uint logSize) : ILogger
+public class TelegramLogger(List<string> actionList, uint logSize) : ILogger
 {
-    private IList<string> ActionLog { get; } = actionList;
+    private List<string> ActionLog { get; } = actionList;
     private uint LogSize { get; } = logSize;
     public IDisposable BeginScope<TState>(TState state) where TState : notnull => null!;
     public bool IsEnabled(LogLevel logLevel) => true;

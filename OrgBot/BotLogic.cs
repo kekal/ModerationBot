@@ -1,68 +1,68 @@
-﻿using System.Text;
+﻿using System.Runtime.CompilerServices;
+using System.Text;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 
+[assembly: InternalsVisibleTo("OrgBot.Tests")]
+
 namespace OrgBot;
 
-public static class Program
+public class BotLogic(string botToken, long? ownerId)
 {
     private const uint LogSize = 30;
     private const double ThrottlingTimeout = 2;
-    private static readonly BotSettings Settings = new();
-    private static long? _ownerId;
-    private static bool _engaged = true;
-    private static readonly List<string> ActionLog = [];
-    private static readonly CancellationTokenSource Cts = new();
-    private static TelegramLogger Logger { get; } = new(ActionLog, LogSize);
+    internal readonly BotSettings Settings = new();
+    private bool _engaged = true;
+    internal readonly List<string> ActionLog = [];
+    private TelegramLogger? Logger { get; set; }
+    private readonly CancellationTokenSource _cts = new();
 
 
-    public static async Task Main()
+    public async Task RunAsync()
     {
+        SetupLogger();
+
         try
         {
-            var botToken = Environment.GetEnvironmentVariable("BOT_TOKEN");
-            var botOwner = Environment.GetEnvironmentVariable("OWNER");
-
-            if (botToken == null)
+            if (Logger == null)
             {
-                await Logger.LogErrorAsync("BOT_TOKEN env variable is not specified");
-                return;
-            }
-
-            if (long.TryParse(botOwner, out var ownerId))
-            {
-                _ownerId = ownerId;
-                await Logger.LogInformationAsync($"Bot will work only for chats created by the user {_ownerId}");
+                Console.Error.WriteLine("Failed to setup logging.");
+                Environment.Exit(1);
             }
 
             using var client = new ThrottledTelegramBotClient(new TelegramBotWrapper(botToken), TimeSpan.FromSeconds(ThrottlingTimeout));
-            
+
             await SetCommandsAsync(client);
 
-            var me = await client.GetMeAsync(Cts.Token);
+            var me = await client.GetMeAsync(_cts.Token);
             await Logger.LogInformationAsync($"Start listening for @{me.Username} ({me.Id})");
 
-            await client.SendContactAsync(ownerId, me.Id.ToString(), " Bot service ", null, "has been started", cancellationToken: Cts.Token);
+            if (ownerId != null)
+            {
+                await client.SendContactAsync(ownerId, me.Id.ToString(), " Bot service ", null, "has been started", cancellationToken: _cts.Token);
+            }
 
-            var updateOffset = 0;
-            while (!Cts.Token.IsCancellationRequested)
+            var oldUpdates = await client.GetUpdatesAsync(offset: -1, limit: 0, timeout: 0, allowedUpdates: [UpdateType.Message], cancellationToken: _cts.Token);
+            var updateOffset = oldUpdates.Length > 0 ? oldUpdates[^1].Id + 1 : -1;
+
+            while (!_cts.Token.IsCancellationRequested)
             {
                 var updates = await client.GetUpdatesAsync(
                     offset: updateOffset,
                     limit: 100,
                     timeout: 60,
                     allowedUpdates: [UpdateType.Message],
-                    cancellationToken: Cts.Token);
+                    cancellationToken: _cts.Token);
 
                 foreach (var update in updates)
                 {
-                    if (Cts.Token.IsCancellationRequested)
+                    if (_cts.Token.IsCancellationRequested)
                     {
                         break;
                     }
 
-                    await HandleUpdateAsync(client, update, Cts.Token);
+                    await HandleUpdateAsync(client, update, _cts.Token);
 
                     updateOffset = update.Id + 1;
                 }
@@ -70,11 +70,19 @@ public static class Program
         }
         catch (Exception e)
         {
-            await Logger.LogErrorAsync(e.ToString());
+            await Logger!.LogErrorAsync(e.ToString());
         }
     }
 
-    private static async Task SetCommandsAsync(ThrottledTelegramBotClient client)
+    internal void SetupLogger()
+    {
+        lock (ActionLog)
+        {
+            Logger = new TelegramLogger(ActionLog, LogSize);
+        }
+    }
+
+    internal static async Task SetCommandsAsync(ThrottledTelegramBotClient client)
     {
         var groupCommands = new[]
         {
@@ -102,9 +110,9 @@ public static class Program
         await client.SetMyCommandsAsync(privateCommands, new BotCommandScopeAllPrivateChats());
     }
 
-    private static async Task HandleUpdateAsync(ThrottledTelegramBotClient client, Update update, CancellationToken cancellationToken)
+    internal async Task HandleUpdateAsync(ThrottledTelegramBotClient client, Update update, CancellationToken cancellationToken)
     {
-        if (!_engaged || update.Type != UpdateType.Message || update.Message is not { } message || message.From == null || message.From.Id == client.BotId)
+        if (update.Type != UpdateType.Message || update.Message is not { } message || message.From == null || message.From.Id == client.BotId)
         {
             return;
         }
@@ -122,7 +130,7 @@ public static class Program
         }
         catch (ApiRequestException ex)
         {
-            await Logger.LogErrorAsync(PrintApiError(ex));
+            await Logger!.LogErrorAsync(PrintApiError(ex));
   
             if (ex is { ErrorCode: 429, Parameters.RetryAfter: not null })
             {
@@ -133,13 +141,13 @@ public static class Program
         }
         catch (Exception e)
         {
-            await Logger.LogErrorAsync($"Failed to handle message: {e}");
+            await Logger!.LogErrorAsync($"Failed to handle message: {e}");
         }
     }
 
-    private static async Task ProcessPrivateMessageAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    internal async Task ProcessPrivateMessageAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
-        if (_ownerId.HasValue && message.From?.Id != _ownerId)
+        if (ownerId.HasValue && message.From?.Id != ownerId)
         {
             await client.SendTextMessageAsync(message.Chat.Id, "You are not the bot owner.", cancellationToken: cancellationToken);
             await client.LeaveChatAsync(message.Chat.Id, cancellationToken: cancellationToken);
@@ -156,7 +164,7 @@ public static class Program
         }
     }
 
-    private static async Task ProcessPrivateCommandAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    internal async Task ProcessPrivateCommandAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
         var commandEntity = message.Entities!.First(e => e.Type == MessageEntityType.BotCommand);
         var commandText = message.Text!.Substring(commandEntity.Offset, commandEntity.Length);
@@ -184,15 +192,15 @@ public static class Program
 
             case "/restart_service":
                 await client.SendTextMessageAsync(message.Chat.Id, "Restarting the service.", cancellationToken: cancellationToken);
-                await Cts.CancelAsync();
+                await _cts.CancelAsync();
                 Environment.Exit(42);  // Upgrade
                 break;
 
 
             case "/exit":
                 await client.SendTextMessageAsync(message.Chat.Id, "Bot is shutting down.", cancellationToken: cancellationToken);
-                if (_ownerId != null) await client.SendContactAsync(_ownerId, client.BotId.ToString() ?? string.Empty, "Bot service ", null, "has been stopped", cancellationToken: cancellationToken);
-                await Cts.CancelAsync();
+                if (ownerId != null) await client.SendContactAsync(ownerId, client.BotId.ToString() ?? string.Empty, "Bot service ", null, "has been stopped", cancellationToken: cancellationToken);
+                await _cts.CancelAsync();
                 Environment.Exit(0); // Stop service
                 break;
 
@@ -213,7 +221,7 @@ public static class Program
         }
     }
 
-    private static async Task ProcessGroupMessageAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    internal async Task ProcessGroupMessageAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
         if (message.Entities?.Any(e => e.Type == MessageEntityType.BotCommand) == true)
         {
@@ -224,7 +232,7 @@ public static class Program
         await HandleSpamAsync(client, message, cancellationToken);
     }
 
-    private static async Task ProcessGroupCommandAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    internal async Task ProcessGroupCommandAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
         if (message.Chat.Type != ChatType.Group && message.Chat.Type != ChatType.Supergroup)
         {
@@ -338,9 +346,9 @@ public static class Program
         }
     }
 
-    private static async Task HandleSpamAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    internal async Task HandleSpamAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
-        if (message.From == null)
+        if (!_engaged || message.From == null)
         {
             return;
         }
@@ -435,7 +443,7 @@ public static class Program
                 }
             }
 
-            await Logger.LogInformationAsync($"Deleted message from {user} and {actionTaken} the user.");
+            await Logger!.LogInformationAsync($"Deleted message from {user} and {actionTaken} the user.");
 
                 var chatId = message.Chat.Id.ToString();
                 chatId = chatId.StartsWith("-100") ? chatId["-100".Length..] : chatId;
@@ -443,12 +451,12 @@ public static class Program
         }
     }
 
-    private static async Task CheckBotOwner(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    internal async Task CheckBotOwner(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
-        if (_ownerId.HasValue)
+        if (ownerId.HasValue)
         {
             var administrators = await client.GetChatAdministratorsAsync(message.Chat.Id, cancellationToken: cancellationToken);
-            if (administrators.FirstOrDefault(admin => admin.Status == ChatMemberStatus.Creator)?.User.Id != _ownerId)
+            if (administrators.FirstOrDefault(admin => admin.Status == ChatMemberStatus.Creator)?.User.Id != ownerId)
             {
                 await client.SendTextMessageAsync(
                     message.Chat.Id,
@@ -461,7 +469,7 @@ public static class Program
         }
     }
 
-    private static async Task<bool> IsUserAdminAsync(ThrottledTelegramBotClient client, Chat chat, long userId, CancellationToken cancellationToken)
+    internal async Task<bool> IsUserAdminAsync(ThrottledTelegramBotClient client, Chat chat, long userId, CancellationToken cancellationToken)
     {
         var chatMember = await client.GetChatMemberAsync(chat.Id, userId, cancellationToken);
         return chatMember.Status == ChatMemberStatus.Creator || chatMember is ChatMemberAdministrator { CanRestrictMembers: true };
@@ -487,7 +495,7 @@ public static class Program
         return $"API Error: \n{sb}";
     }
 
-    private static async Task<bool> IsReplyToLinkedChannelPost(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    internal async Task<bool> IsReplyToLinkedChannelPost(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
         if (message.ReplyToMessage?.SenderChat is not { Type: ChatType.Channel })
         {

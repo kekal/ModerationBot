@@ -5,14 +5,14 @@ namespace OrgBot.Tests;
 [TestClass]
 public class TelegramLoggerTests
 {
-    private List<string> _actionLog;
-    private TelegramLogger _logger;
+    private List<string> _actionLog = null!;
+    private TelegramLogger _logger = null!;
     private const uint LogSize = 5;
 
     [TestInitialize]
     public void Setup()
     {
-        _actionLog = new List<string>();
+        _actionLog = [];
         _logger = new TelegramLogger(_actionLog, LogSize);
     }
 
@@ -20,7 +20,7 @@ public class TelegramLoggerTests
     public async Task TestLogInformationAsync()
     {
         // Arrange
-        var message = "Test information message";
+        const string message = "Test information message";
 
         // Act
         await _logger.LogInformationAsync(message);
@@ -34,7 +34,7 @@ public class TelegramLoggerTests
     public async Task TestLogErrorAsync()
     {
         // Arrange
-        var message = "Test error message";
+        const string message = "Test error message";
 
         // Act
         await _logger.LogErrorAsync(message);
@@ -48,14 +48,14 @@ public class TelegramLoggerTests
     public async Task TestLogSizeLimit()
     {
         // Arrange
-        for (int i = 1; i <= LogSize + 2; i++)
+        for (var i = 1; i <= LogSize + 2; i++)
         {
             await _logger.LogInformationAsync($"Message {i}");
         }
 
         // Assert
         Assert.AreEqual(LogSize, (uint)_actionLog.Count);
-        StringAssert.Contains(_actionLog[0], $"Message {3}");
+        StringAssert.Contains(_actionLog[0], "Message 3");
         StringAssert.Contains(_actionLog[(int)LogSize - 1], $"Message {LogSize + 2}");
     }
 
@@ -63,7 +63,7 @@ public class TelegramLoggerTests
     public void TestLogMethod()
     {
         // Arrange
-        var message = "Test log method message";
+        const string message = "Test log method message";
 
         // Act
         _logger.Log(LogLevel.Information, new EventId(), message, null, (s, _) => s);

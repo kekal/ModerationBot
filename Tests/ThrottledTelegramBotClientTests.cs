@@ -1,10 +1,5 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
-using OrgBot;
-using System;
 using System.Diagnostics;
-using System.Threading;
-using System.Threading.Tasks;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -14,8 +9,8 @@ namespace OrgBot.Tests;
 [TestClass]
 public class ThrottledTelegramBotClientTests
 {
-    private Mock<IMyTelegramBotClient> _mockClient;
-    private ThrottledTelegramBotClient _throttledClient;
+    private Mock<IMyTelegramBotClient> _mockClient = null!;
+    private ThrottledTelegramBotClient _throttledClient = null!;
     private readonly TimeSpan _throttleDelay = TimeSpan.FromSeconds(1);
 
     [TestInitialize]
@@ -62,7 +57,7 @@ public class ThrottledTelegramBotClientTests
     {
         // Arrange
         var chatId = new ChatId(123456);
-        var text = "Hello, World!";
+        const string text = "Hello, World!";
         var cancellationToken = CancellationToken.None;
 
         _mockClient.Setup(c => c.SendTextMessageAsync(
@@ -99,7 +94,7 @@ public class ThrottledTelegramBotClientTests
     {
         // Arrange
         var chatId = new ChatId(123456);
-        var messageId = 1;
+        const int messageId = 1;
         var cancellationToken = CancellationToken.None;
 
         _mockClient.Setup(c => c.DeleteMessageAsync(chatId, messageId, cancellationToken))
@@ -125,9 +120,9 @@ public class ThrottledTelegramBotClientTests
     {
         // Arrange
         var chatId = new ChatId(123456);
-        var userId = 789L;
+        const long userId = 789L;
         DateTime? untilDate = DateTime.UtcNow.AddDays(1);
-        bool revokeMessages = false;
+        const bool revokeMessages = false;
         var cancellationToken = CancellationToken.None;
 
         _mockClient.Setup(c => c.BanChatMemberAsync(chatId, userId, untilDate, revokeMessages, cancellationToken))
@@ -154,8 +149,8 @@ public class ThrottledTelegramBotClientTests
         // Arrange
         var commands = new List<BotCommand>
         {
-            new BotCommand { Command = "start", Description = "Start the bot" },
-            new BotCommand { Command = "help", Description = "Show help" }
+            new() { Command = "start", Description = "Start the bot" },
+            new() { Command = "help", Description = "Show help" }
         };
         BotCommandScope? scope = null;
         string? languageCode = null;
@@ -184,10 +179,10 @@ public class ThrottledTelegramBotClientTests
     {
         // Arrange
         var chatId = new ChatId(123456);
-        var phoneNumber = "+1234567890";
-        var firstName = "John";
-        var lastName = "Doe";
-        var vCard = "BEGIN:VCARD\nVERSION:2.1\nN:Doe;John\nTEL;CELL:+1234567890\nEND:VCARD";
+        const string phoneNumber = "+1234567890";
+        const string firstName = "John";
+        const string lastName = "Doe";
+        const string vCard = "BEGIN:VCARD\nVERSION:2.1\nN:Doe;John\nTEL;CELL:+1234567890\nEND:VCARD";
         var cancellationToken = CancellationToken.None;
 
         _mockClient.Setup(c => c.SendContactAsync(
@@ -247,7 +242,7 @@ public class ThrottledTelegramBotClientTests
     {
         // Arrange
         var chatId = new ChatId(123456);
-        var senderChatId = 789L;
+        const long senderChatId = 789L;
         var cancellationToken = CancellationToken.None;
 
         _mockClient.Setup(c => c.BanChatSenderChatAsync(chatId, senderChatId, cancellationToken))
@@ -273,7 +268,7 @@ public class ThrottledTelegramBotClientTests
     {
         // Arrange
         var chatId = new ChatId(123456);
-        var userId = 789L;
+        const long userId = 789L;
         var permissions = new ChatPermissions { CanSendMessages = false };
         bool? useIndependentChatPermissions = null;
         DateTime? untilDate = DateTime.UtcNow.AddHours(1);
@@ -337,7 +332,7 @@ public class ThrottledTelegramBotClientTests
         // Arrange
         var chatId = new ChatId(123456);
         var cancellationToken = CancellationToken.None;
-        var chat = new Chat { Id = chatId.Identifier.Value, Title = "Test Chat" };
+        var chat = new Chat { Id = chatId.Identifier!.Value, Title = "Test Chat" };
 
         _mockClient.Setup(c => c.GetChatAsync(chatId, cancellationToken))
             .ReturnsAsync(chat);
@@ -365,7 +360,7 @@ public class ThrottledTelegramBotClientTests
     {
         // Arrange
         var chatId = new ChatId(123456);
-        var userId = 789L;
+        const long userId = 789L;
         var cancellationToken = CancellationToken.None;
         var chatMember = new ChatMemberMember { User = new User { Id = userId, FirstName = "Test User" } };
 
@@ -397,12 +392,12 @@ public class ThrottledTelegramBotClientTests
         int? offset = null;
         int? limit = 100;
         int? timeout = 0;
-        IEnumerable<UpdateType>? allowedUpdates = null;
+        List<UpdateType>? allowedUpdates = null;
         var cancellationToken = CancellationToken.None;
         var updates = new Update[]
         {
-            new Update { Id = 1, Message = new Message { MessageId = 1 } },
-            new Update { Id = 2, Message = new Message { MessageId = 2 } }
+            new() { Id = 1, Message = new Message { MessageId = 1 } },
+            new() { Id = 2, Message = new Message { MessageId = 2 } }
         };
 
         _mockClient.Setup(c => c.GetUpdatesAsync(offset, limit, timeout, allowedUpdates, cancellationToken))

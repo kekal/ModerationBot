@@ -8,30 +8,24 @@ using Telegram.Bot.Types.ReplyMarkups;
 
 namespace OrgBot;
 
-public class TelegramBotWrapper : IMyTelegramBotClient
+public class TelegramBotWrapper(string botToken) : IMyTelegramBotClient
 {
-    private readonly ITelegramBotClient _client;
-
-    public TelegramBotWrapper(string botToken)
+    private readonly ITelegramBotClient _client = new TelegramBotClient(botToken)
     {
-        _client = new TelegramBotClient(botToken)
-        {
-            Timeout = TimeSpan.FromSeconds(60)
-        };
-    }
+        Timeout = TimeSpan.FromSeconds(60)
+    };
 
-
-    public async Task<TResponse> MakeRequestAsync<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = new CancellationToken())
+    public async Task<TResponse> MakeRequestAsync<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = new())
     {
         return await _client.MakeRequestAsync(request, cancellationToken);
     }
 
-    public async Task<bool> TestApiAsync(CancellationToken cancellationToken = new CancellationToken())
+    public async Task<bool> TestApiAsync(CancellationToken cancellationToken = new())
     {
         return await _client.TestApiAsync(cancellationToken);
     }
 
-    public async Task DownloadFileAsync(string filePath, Stream destination, CancellationToken cancellationToken = new CancellationToken())
+    public async Task DownloadFileAsync(string filePath, Stream destination, CancellationToken cancellationToken = new())
     {
         await _client.DownloadFileAsync(filePath, destination, cancellationToken);
     }
