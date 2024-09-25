@@ -46,6 +46,8 @@ public class BotLogic(string botToken, long? ownerId)
             var oldUpdates = await client.GetUpdatesAsync(offset: -1, limit: 0, timeout: 0, allowedUpdates: [UpdateType.Message], cancellationToken: _cts.Token);
             var updateOffset = oldUpdates.Length > 0 ? oldUpdates[^1].Id + 1 : -1;
 
+            await Task.Delay(2000);
+
             while (!_cts.Token.IsCancellationRequested)
             {
                 var updates = await client.GetUpdatesAsync(
