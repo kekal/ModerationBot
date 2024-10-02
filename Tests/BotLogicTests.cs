@@ -313,68 +313,7 @@ public class BotLogicTests
     }
 
     [TestMethod]
-    public async Task CheckBotOwner_ChatNotOwnedByBotOwner_ShouldLeaveChat()
-    {
-        // Arrange
-        var message = new Message
-        {
-            Chat = new Chat { Id = -1000 }
-        };
-
-        _mockClient.Setup(c => c.GetChatAdministratorsAsync(
-                message.Chat.Id,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new ChatMemberOwner { User = new User { Id = 999999 } }]);
-
-        _mockClient.Setup(c => c.SendTextMessageAsync(
-                message.Chat.Id,
-                "This chat does not belong to bot owner.",
-                null, null, null, null, true, null, null, null, null,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Message { MessageId = 1 });
-
-        _mockClient.Setup(c => c.LeaveChatAsync(
-                message.Chat.Id,
-                It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        // Act
-        await _botLogic.CheckBotOwner(_throttledClient, message, CancellationToken.None);
-
-        // Assert
-        _mockClient.Verify(c => c.SendTextMessageAsync(
-            message.Chat.Id,
-            "This chat does not belong to bot owner.",
-            null, null, null, null, true, null, null, null, null,
-            It.IsAny<CancellationToken>()), Times.Once);
-
-        _mockClient.Verify(c => c.LeaveChatAsync(
-            message.Chat.Id,
-            It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [TestMethod]
-    public async Task IsUserAdminAsync_UserIsAdmin_ReturnsTrue()
-    {
-        // Arrange
-        var chat = new Chat { Id = -1000 };
-        const int userId = 12345;
-
-        _mockClient.Setup(c => c.GetChatMemberAsync(
-                chat.Id,
-                userId,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChatMemberAdministrator { User = new User { Id = userId }, CanRestrictMembers = true });
-
-        // Act
-        var result = await _botLogic.IsUserAdminAsync(_throttledClient, chat, userId, CancellationToken.None);
-
-        // Assert
-        Assert.IsTrue(result);
-    }
-
-    [TestMethod]
-    public async Task IsReplyToLinkedChannelPost_MessageIsReplyToLinkedChannelPost_ReturnsTrue()
+    public Task IsReplyToLinkedChannelPost_MessageIsReplyToLinkedChannelPost_ReturnsTrue()
     {
         // Arrange
         var message = new Message
@@ -392,10 +331,11 @@ public class BotLogicTests
             .ReturnsAsync(new Chat { Id = message.Chat.Id, LinkedChatId = -2000 });
 
         // Act
-        var result = await _botLogic.IsReplyToLinkedChannelPost(_throttledClient, message, CancellationToken.None);
+        var result = _botLogic.IsReplyToLinkedChannelPost(message);
 
         // Assert
         Assert.IsTrue(result);
+        return Task.CompletedTask;
     }
 
 }

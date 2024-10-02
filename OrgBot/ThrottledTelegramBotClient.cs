@@ -1,4 +1,5 @@
-﻿using Telegram.Bot.Types;
+﻿using System.Reflection;
+using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
@@ -21,6 +22,9 @@ public sealed class ThrottledTelegramBotClient(IMyTelegramBotClient client, Time
         try
         {
             var result = await apiCall();
+#if DEBUG
+            Console.WriteLine($"{apiCall.GetMethodInfo().Name.Replace('<', '|').Replace('>', '|').Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault()} called");
+#endif
             await Task.Delay(delayBetweenRequests);
             return result;
         }
@@ -32,11 +36,13 @@ public sealed class ThrottledTelegramBotClient(IMyTelegramBotClient client, Time
 
     private async Task ExecuteWithDelayAsync(Func<Task?> apiCall)
     {
-
         await _semaphore.WaitAsync();
         try
         {
             await apiCall()!;
+#if DEBUG
+            Console.WriteLine($"{apiCall.GetMethodInfo().Name.Replace('<', '|').Replace('>', '|').Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault()} called");
+#endif
             await Task.Delay(delayBetweenRequests);
         }
         finally
