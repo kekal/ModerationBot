@@ -15,10 +15,8 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
     internal const int GenericTelegramId = 777000;
     internal const int UserAsTheChannelId = 136817688;
 
-    private const uint LogSize = 30;
     private const double ThrottlingTimeout = 1;
-    internal readonly BotSettings Settings = new();
-    internal bool Engaged = true;
+    internal readonly BotSettings Settings = BotSettings.Load();
     internal readonly List<string> ActionLog = [];
     private TelegramLogger? Logger { get; set; }
     private readonly CancellationTokenSource _cts = new();
@@ -91,8 +89,6 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
                 await Task.Delay(TimeSpan.FromSeconds(retryAfter + 5));
             }
 
-           
-
             applicationLifetime.Exit(24);
         }
         catch (Exception e)
@@ -126,12 +122,21 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
     {
         lock (ActionLog)
         {
-            Logger = new TelegramLogger(ActionLog, LogSize);
+            lock (Settings)
+            {
+                Logger = new TelegramLogger(ActionLog, Settings.LogSize);
+            }
         }
     }
 
-    internal static async Task SetCommandsAsync(ThrottledTelegramBotClient client)
+    internal async Task SetCommandsAsync(ThrottledTelegramBotClient client)
     {
+        uint logSize;
+        lock (Settings)
+        {
+            logSize = Settings.LogSize;
+        }
+
         var groupCommands = new[]
         {
             new BotCommand { Command = "ban", Description = Resource.Enable_banning },
@@ -145,7 +150,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
 
         var privateCommands = new[]
         {
-            new BotCommand { Command = "log", Description = string.Format(Resource.Show_the_last_actions, LogSize) },
+            new BotCommand { Command = "log", Description = string.Format(Resource.Show_the_last_actions, logSize) },
             new BotCommand { Command = "engage", Description = Resource.Start },
             new BotCommand { Command = "disengage", Description = Resource.Pause },
             new BotCommand { Command = "restart_service", Description = Resource.Restarting },
@@ -238,12 +243,18 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
                 break;
 
             case "/engage":
-                Engaged = true;
+                lock (Settings)
+                {
+                    Settings.Engaged = true;
+                }
                 await client.SendTextMessageAsync(message.Chat.Id, Resource.Bot_is_engaged, cancellationToken: cancellationToken);
                 break;
 
             case "/disengage":
-                Engaged = false;
+                lock (Settings)
+                {
+                    Settings.Engaged = false;
+                }
                 await client.SendTextMessageAsync(message.Chat.Id, Resource.Bot_disengaged, cancellationToken: cancellationToken);
                 break;
 
@@ -262,9 +273,15 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
                 break;
 
             case "/help":
+                uint logSize;
+                lock (Settings)
+                {
+                    logSize = Settings.LogSize;
+                }
+                
                 var privateHelpText =
                     $"Available commands:{Environment.NewLine}" +
-                    $"/log - {string.Format(Resource.Show_the_last_actions, LogSize)}{Environment.NewLine}" +
+                    $"/log - {string.Format(Resource.Show_the_last_actions, logSize)}{Environment.NewLine}" +
                     $"/engage - {Resource.Start}{Environment.NewLine}" +
                     $"/disengage - {Resource.Pause}{Environment.NewLine}" +
                     $"/restart_service - {Resource.Restarting}{Environment.NewLine}" +
@@ -317,8 +334,8 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
                 case "/ban":
                     lock (Settings)
                     {
-                        Settings.BanUsers = true;
-                        Settings.UseMute = false;
+                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), true);
+                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), false);
                     }
 
                     await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_be_banned, cancellationToken: cancellationToken);
@@ -327,8 +344,8 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
                 case "/no_restrict":
                     lock (Settings)
                     {
-                        Settings.BanUsers = false;
-                        Settings.UseMute = false;
+                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), false);
+                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), false);
                     }
 
                     await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_not_be_restricted, cancellationToken: cancellationToken);
@@ -337,8 +354,8 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
                 case "/mute":
                     lock (Settings)
                     {
-                        Settings.UseMute = true;
-                        Settings.BanUsers = false;
+                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), true);
+                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), false);
                     }
 
                     await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_be_muted, cancellationToken: cancellationToken);
@@ -349,7 +366,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
                     {
                         lock (Settings)
                         {
-                            Settings.SpamTimeWindow = TimeSpan.FromSeconds(seconds);
+                            Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.SpamTimeWindow), TimeSpan.FromSeconds(seconds));
                         }
 
                         await client.SendTextMessageAsync(message.Chat.Id, $"Spam time window set to {seconds} seconds.", cancellationToken: cancellationToken);
@@ -366,7 +383,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
                     {
                         lock (Settings)
                         {
-                            Settings.RestrictionDuration = null;
+                            Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.RestrictionDuration), (TimeSpan?)null);
                         }
 
                         await client.SendTextMessageAsync(message.Chat.Id, Resource.Restriction_forever, cancellationToken: cancellationToken);
@@ -375,7 +392,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
                     {
                         lock (Settings)
                         {
-                            Settings.RestrictionDuration = TimeSpan.FromMinutes(restrictionMinutes);
+                            Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.RestrictionDuration), TimeSpan.FromMinutes(restrictionMinutes));
                         }
 
                         await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.Restriction_duration, restrictionMinutes), cancellationToken: cancellationToken);
@@ -391,8 +408,8 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
                     bool silentMode;
                     lock (Settings)
                     {
-                        Settings.SilentMode = !Settings.SilentMode;
-                        silentMode = Settings.SilentMode;
+                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.SilentMode), !Settings.GetGroupSettings(message.Chat.Id).SilentMode);
+                        silentMode = Settings.GetGroupSettings(message.Chat.Id).SilentMode;
                     }
 
                     await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.Silent_mode, silentMode ? "enabled" : "disabled"), cancellationToken: cancellationToken);
@@ -420,7 +437,24 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
 
     private async Task HandleSpamAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
-        if (!Engaged || message.From == null)
+        TimeSpan spamTimeWindow;
+        bool banUsers;
+        bool useMute;
+        TimeSpan? restrictionDuration;
+        bool silentMode;
+        bool engaged;
+
+        lock (Settings)
+        {
+            spamTimeWindow = Settings.GetGroupSettings(message.Chat.Id).SpamTimeWindow;
+            banUsers = Settings.GetGroupSettings(message.Chat.Id).BanUsers;
+            useMute = Settings.GetGroupSettings(message.Chat.Id).UseMute;
+            restrictionDuration = Settings.GetGroupSettings(message.Chat.Id).RestrictionDuration;
+            silentMode = Settings.GetGroupSettings(message.Chat.Id).SilentMode;
+            engaged = Settings.Engaged;
+        }
+
+        if (!engaged || message.From == null)
         {
             return;
         }
@@ -428,21 +462,6 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         if (!IsReplyToLinkedChannelPost(message))
         {
             return;
-        }
-
-        TimeSpan spamTimeWindow;
-        bool banUsers;
-        bool useMute;
-        TimeSpan? restrictionDuration;
-        bool silentMode;
-
-        lock (Settings)
-        {
-            spamTimeWindow = Settings.SpamTimeWindow;
-            banUsers = Settings.BanUsers;
-            useMute = Settings.UseMute;
-            restrictionDuration = Settings.RestrictionDuration;
-            silentMode = Settings.SilentMode;
         }
 
         if (message.Date - message.ReplyToMessage!.Date < spamTimeWindow)
