@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using OrgBot.TestEntities;
+using System.Reflection;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -8,7 +9,6 @@ namespace OrgBot;
 public sealed class ThrottledTelegramBotClient(IMyTelegramBotClient client, TimeSpan delayBetweenRequests) : IDisposable
 {
     private readonly SemaphoreSlim _semaphore = new(1, 1);
-
     public long? BotId => client.BotId;
 
     public async Task<Update[]> GetUpdatesAsync(int? offset, int? limit, int? timeout, IEnumerable<UpdateType>? allowedUpdates = default, CancellationToken cancellationToken = default)
@@ -23,7 +23,7 @@ public sealed class ThrottledTelegramBotClient(IMyTelegramBotClient client, Time
         {
             var result = await apiCall();
 #if DEBUG
-            Console.WriteLine($"{apiCall.GetMethodInfo().Name.Replace('<', '|').Replace('>', '|').Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault()} called");
+            Console.WriteLine($@"{apiCall.GetMethodInfo().Name.Replace('<', '|').Replace('>', '|').Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault()} called");
 #endif
             await Task.Delay(delayBetweenRequests);
             return result;
@@ -41,7 +41,7 @@ public sealed class ThrottledTelegramBotClient(IMyTelegramBotClient client, Time
         {
             await apiCall()!;
 #if DEBUG
-            Console.WriteLine($"{apiCall.GetMethodInfo().Name.Replace('<', '|').Replace('>', '|').Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault()} called");
+            Console.WriteLine($@"{apiCall.GetMethodInfo().Name.Replace('<', '|').Replace('>', '|').Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault()} called");
 #endif
             await Task.Delay(delayBetweenRequests);
         }

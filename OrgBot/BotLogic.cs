@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using OrgBot.TestEntities;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
@@ -8,16 +9,16 @@ using Telegram.Bot.Types.Enums;
 
 namespace OrgBot;
 
-public class BotLogic(string botToken, long? ownerId)
+public class BotLogic(string botToken, long? ownerId, IApplicationLifetime applicationLifetime)
 {
-    private const int GroupAnonymousAdminId = 1087968824;
-    private const int GenericTelegramId = 777000;
-    private const int UserAsTheChannelId = 136817688;
+    internal const int GroupAnonymousAdminId = 1087968824;
+    internal const int GenericTelegramId = 777000;
+    internal const int UserAsTheChannelId = 136817688;
 
     private const uint LogSize = 30;
     private const double ThrottlingTimeout = 1;
     internal readonly BotSettings Settings = new();
-    private bool _engaged = true;
+    internal bool Engaged = true;
     internal readonly List<string> ActionLog = [];
     private TelegramLogger? Logger { get; set; }
     private readonly CancellationTokenSource _cts = new();
@@ -27,73 +28,97 @@ public class BotLogic(string botToken, long? ownerId)
     {
         SetupLogger();
 
+        ThrottledTelegramBotClient? client = null;
+
         try
         {
             if (Logger == null)
             {
                 Console.Error.WriteLine("Failed to setup logging.");
-                Environment.Exit(1);
+                applicationLifetime.Exit(1);
             }
 
-            using var client = new ThrottledTelegramBotClient(new TelegramBotWrapper(botToken), TimeSpan.FromSeconds(ThrottlingTimeout));
-
-            await SetCommandsAsync(client);
-
-            var me = await client.GetMeAsync(_cts.Token);
-            await Logger.LogInformationAsync($"Start listening for @{me.Username} ({me.Id})");
-
-            if (ownerId != null)
+            
+            using (client = new ThrottledTelegramBotClient(new TelegramBotWrapper(botToken), TimeSpan.FromSeconds(ThrottlingTimeout)))
             {
-                await client.SendContactAsync(ownerId, me.Id.ToString(), " Bot service ", null, "has been started", cancellationToken: _cts.Token);
-            }
+                await SetCommandsAsync(client);
 
-            var oldUpdates = await client.GetUpdatesAsync(offset: -1, limit: 0, timeout: 0, allowedUpdates: [UpdateType.Message], cancellationToken: _cts.Token);
-            var updateOffset = oldUpdates.Length > 0 ? oldUpdates[^1].Id + 1 : -1;
+                var me = await client.GetMeAsync(_cts.Token);
+                await Logger!.LogInformationAsync($"Start listening for @{me.Username} ({me.Id})");
 
-            await Task.Delay(2000);
-
-            while (!_cts.Token.IsCancellationRequested)
-            {
-                var updates = await client.GetUpdatesAsync(
-                    offset: updateOffset,
-                    limit: 100,
-                    timeout: 60,
-                    allowedUpdates: [UpdateType.Message, UpdateType.MyChatMember],
-                    cancellationToken: _cts.Token);
-
-                foreach (var update in updates)
+                if (ownerId != null)
                 {
-                    if (_cts.Token.IsCancellationRequested)
+                    await client.SendContactAsync(ownerId, me.Id.ToString(), " Bot service ", null, "has been started", cancellationToken: _cts.Token);
+                }
+
+                var oldUpdates = await client.GetUpdatesAsync(offset: -1, limit: 0, timeout: 0, allowedUpdates: [UpdateType.Message], cancellationToken: _cts.Token);
+                var updateOffset = oldUpdates.Length > 0 ? oldUpdates[^1].Id + 1 : -1;
+
+                await Task.Delay(2000);
+
+                while (!_cts.Token.IsCancellationRequested)
+                {
+                    var updates = await client.GetUpdatesAsync(
+                        offset: updateOffset,
+                        limit: 100,
+                        timeout: 60,
+                        allowedUpdates: [UpdateType.Message, UpdateType.MyChatMember],
+                        cancellationToken: _cts.Token);
+
+                    foreach (var update in updates)
                     {
-                        break;
+                        if (_cts.Token.IsCancellationRequested)
+                        {
+                            break;
+                        }
+
+                        await HandleUpdateAsync(client, update, _cts.Token);
+
+                        updateOffset = update.Id + 1;
                     }
-
-                    await HandleUpdateAsync(client, update, _cts.Token);
-
-                    updateOffset = update.Id + 1;
                 }
             }
         }
         catch (ApiRequestException ex)
         {
+            await LastChanceNotification(client, PrintApiError(ex));
+
             await Logger!.LogErrorAsync(PrintApiError(ex));
             if (ex is { ErrorCode: 429, Parameters.RetryAfter: { } retryAfter })
             {
-                await Logger.LogErrorAsync($"API rate limit exceeded. Retrying after {retryAfter} seconds.");
-                Console.WriteLine($"Too many requests: {retryAfter} seconds to wait.");
+                await Logger.LogErrorAsync(string.Format(Resource.API_rate_limit_exceeded, retryAfter));
+                Console.WriteLine(Resource.Too_many_requests, retryAfter);
                 await Task.Delay(TimeSpan.FromSeconds(retryAfter + 5));
             }
 
-            Environment.Exit(24);
+           
+
+            applicationLifetime.Exit(24);
         }
         catch (Exception e)
         {
             var error = string.Join(" | ", e.ToString().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            await LastChanceNotification(client, error);
             await Logger!.LogErrorAsync(error);
 
             await Task.Delay(TimeSpan.FromMinutes(5));
 
-            Environment.Exit(2);
+            applicationLifetime.Exit(2);
+        }
+    }
+
+    private async Task LastChanceNotification(ThrottledTelegramBotClient? client, string text)
+    {
+        try
+        {
+            if (ownerId.HasValue && client != null)
+            {
+                await client.SendTextMessageAsync(ownerId, text, allowSendingWithoutReply: true, cancellationToken: _cts.Token);
+            }
+        }
+        catch
+        {
+            // ignored
         }
     }
 
@@ -109,23 +134,23 @@ public class BotLogic(string botToken, long? ownerId)
     {
         var groupCommands = new[]
         {
-            new BotCommand { Command = "ban", Description = "Enable banning users when deleting spam" },
-            new BotCommand { Command = "no_restrict", Description = "Disable restricting users when deleting spam" },
-            new BotCommand { Command = "mute", Description = "Mute users instead of banning" },
-            new BotCommand { Command = "set_spam_time", Description = "Set the spam time window in seconds" },
-            new BotCommand { Command = "set_restriction_time", Description = "Set the restriction duration in minutes or '0' for infinite" },
-            new BotCommand { Command = "silent", Description = "Toggle silent mode (no messages on spam actions)" },
-            new BotCommand { Command = "help", Description = "Show available commands" }
+            new BotCommand { Command = "ban", Description = Resource.Enable_banning },
+            new BotCommand { Command = "no_restrict", Description = Resource.Disable_any_restricting },
+            new BotCommand { Command = "mute", Description = Resource.Enable_muting },
+            new BotCommand { Command = "set_spam_time", Description = Resource.Set_the_spam_time },
+            new BotCommand { Command = "set_restriction_time", Description = Resource.Set_the_restriction_duration },
+            new BotCommand { Command = "silent", Description = Resource.Toggle_silent },
+            new BotCommand { Command = "help", Description = Resource.ShowHelp }
         };
 
         var privateCommands = new[]
         {
-            new BotCommand { Command = "log", Description = $"Show the last {LogSize} actions" },
-            new BotCommand { Command = "engage", Description = "Start processing updates" },
-            new BotCommand { Command = "disengage", Description = "Stop processing updates" },
-            new BotCommand { Command = "restart_service", Description = "Restarting the service" },
-            new BotCommand { Command = "exit", Description = "Stop the bot" },
-            new BotCommand { Command = "help", Description = "Show available commands" }
+            new BotCommand { Command = "log", Description = string.Format(Resource.Show_the_last_actions, LogSize) },
+            new BotCommand { Command = "engage", Description = Resource.Start },
+            new BotCommand { Command = "disengage", Description = Resource.Pause },
+            new BotCommand { Command = "restart_service", Description = Resource.Restarting },
+            new BotCommand { Command = "exit", Description = Resource.Stop },
+            new BotCommand { Command = "help", Description = Resource.ShowHelp }
         };
 
         await client.SetMyCommandsAsync(groupCommands, new BotCommandScopeAllGroupChats());
@@ -140,6 +165,7 @@ public class BotLogic(string botToken, long? ownerId)
             if (update is { Type: UpdateType.MyChatMember, MyChatMember.NewChatMember: { User.Id: var botId, Status: ChatMemberStatus.Administrator } } && botId == client.BotId)
             {
                 await CheckGroupOwnership(client, update.MyChatMember.Chat.Id, cancellationToken);
+                return;
             }
 
             if (update.Type != UpdateType.Message || update.Message is not { From: not null } message || message.From.Id == client.BotId)
@@ -158,27 +184,29 @@ public class BotLogic(string botToken, long? ownerId)
         }
         catch (ApiRequestException ex)
         {
+            await LastChanceNotification(client, PrintApiError(ex));
             await Logger!.LogErrorAsync(PrintApiError(ex));
 
             if (ex is { ErrorCode: 429, Parameters.RetryAfter: not null })
             {
                 var retryAfter = ex.Parameters.RetryAfter.Value;
-                await Logger.LogErrorAsync($"API rate limit exceeded. Retrying after {retryAfter + 10} seconds.");
+                await Logger.LogErrorAsync(string.Format(Resource.API_rate_limit_exceeded, retryAfter + 10));
                 await Task.Delay((retryAfter + 10) * 1000, cancellationToken);
             }
         }
         catch (Exception e)
         {
             var error = string.Join(" | ", e.ToString().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            await LastChanceNotification(client, error);
             await Logger!.LogErrorAsync($"Failed to handle message: {error}");
         }
     }
 
-    internal async Task ProcessPrivateMessageAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    private async Task ProcessPrivateMessageAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
         if (ownerId.HasValue && message.From?.Id != ownerId)
         {
-            await client.SendTextMessageAsync(message.Chat.Id, "You are not the bot owner.", cancellationToken: cancellationToken);
+            await client.SendTextMessageAsync(message.Chat.Id, Resource.not_bot_owner, cancellationToken: cancellationToken);
             await client.LeaveChatAsync(message.Chat.Id, cancellationToken: cancellationToken);
             return;
         }
@@ -189,11 +217,11 @@ public class BotLogic(string botToken, long? ownerId)
         }
         else
         {
-            await client.SendTextMessageAsync(message.Chat.Id, "Please use commands to interact with the bot. Use /help to see available commands.", cancellationToken: cancellationToken);
+            await client.SendTextMessageAsync(message.Chat.Id, Resource.non_command_error, cancellationToken: cancellationToken);
         }
     }
 
-    internal async Task ProcessPrivateCommandAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    private async Task ProcessPrivateCommandAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
         var commandEntity = message.Entities!.First(e => e.Type == MessageEntityType.BotCommand);
         var commandText = message.Text!.Substring(commandEntity.Offset, commandEntity.Length);
@@ -204,53 +232,55 @@ public class BotLogic(string botToken, long? ownerId)
                 string logContent;
                 lock (ActionLog)
                 {
-                    logContent = string.Join("\n\n\n", ActionLog);
+                    logContent = string.Join($"{Environment.NewLine}{Environment.NewLine}{Environment.NewLine}", ActionLog);
                 }
                 await client.SendTextMessageAsync(message.Chat.Id, string.IsNullOrWhiteSpace(logContent) ? "No actions logged yet." : logContent, cancellationToken: cancellationToken);
                 break;
 
             case "/engage":
-                _engaged = true;
-                await client.SendTextMessageAsync(message.Chat.Id, "Bot is now engaged and processing updates.", cancellationToken: cancellationToken);
+                Engaged = true;
+                await client.SendTextMessageAsync(message.Chat.Id, Resource.Bot_is_engaged, cancellationToken: cancellationToken);
                 break;
 
             case "/disengage":
-                _engaged = false;
-                await client.SendTextMessageAsync(message.Chat.Id, "Bot is now disengaged and will not process updates.", cancellationToken: cancellationToken);
+                Engaged = false;
+                await client.SendTextMessageAsync(message.Chat.Id, Resource.Bot_disengaged, cancellationToken: cancellationToken);
                 break;
 
             case "/restart_service":
-                await client.SendTextMessageAsync(message.Chat.Id, "Restarting the service.", cancellationToken: cancellationToken);
+                await client.SendTextMessageAsync(message.Chat.Id, Resource.Restarting, cancellationToken: cancellationToken);
                 await _cts.CancelAsync();
-                Environment.Exit(42);  // Upgrade
+                applicationLifetime.Exit(42);  // Upgrade
                 break;
 
 
             case "/exit":
-                await client.SendTextMessageAsync(message.Chat.Id, "Bot is shutting down.", cancellationToken: cancellationToken);
+                await client.SendTextMessageAsync(message.Chat.Id, Resource.shutting_down, cancellationToken: cancellationToken);
                 if (ownerId != null) await client.SendContactAsync(ownerId, client.BotId.ToString() ?? string.Empty, "Bot service ", null, "has been stopped", cancellationToken: cancellationToken);
                 await _cts.CancelAsync();
-                Environment.Exit(0); // Stop service
+                applicationLifetime.Exit(0); // Stop service
                 break;
 
             case "/help":
-                const string privateHelpText = "Available commands:\n" +
-                                               "/log - Show the last 30 actions\n" +
-                                               "/engage - Start processing updates\n" +
-                                               "/disengage - Stop processing updates\n" +
-                                               "/restart_service - Restarting the service\n" +
-                                               "/exit - Stop the bot\n" +
-                                               "/help - Show this help message";
+                var privateHelpText =
+                    $"Available commands:{Environment.NewLine}" +
+                    $"/log - {string.Format(Resource.Show_the_last_actions, LogSize)}{Environment.NewLine}" +
+                    $"/engage - {Resource.Start}{Environment.NewLine}" +
+                    $"/disengage - {Resource.Pause}{Environment.NewLine}" +
+                    $"/restart_service - {Resource.Restarting}{Environment.NewLine}" +
+                    $"/exit - {Resource.Stop}{Environment.NewLine}" +
+                    $"/help - {Resource.ShowHelp}";
+
                 await client.SendTextMessageAsync(message.Chat.Id, privateHelpText, cancellationToken: cancellationToken);
                 break;
 
             default:
-                await client.SendTextMessageAsync(message.Chat.Id, "Unknown command.", cancellationToken: cancellationToken);
+                await client.SendTextMessageAsync(message.Chat.Id, Resource.UnknownCommand, cancellationToken: cancellationToken);
                 break;
         }
     }
 
-    internal async Task ProcessGroupMessageAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    private async Task ProcessGroupMessageAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
         if (message.Entities?.Any(e => e.Type == MessageEntityType.BotCommand) == true)
         {
@@ -262,7 +292,7 @@ public class BotLogic(string botToken, long? ownerId)
         }
     }
 
-    internal async Task ProcessGroupCommandAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    private async Task ProcessGroupCommandAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
         if (message.Chat.Type != ChatType.Group && message.Chat.Type != ChatType.Supergroup || message.From == null)
         {
@@ -291,7 +321,7 @@ public class BotLogic(string botToken, long? ownerId)
                         Settings.UseMute = false;
                     }
 
-                    await client.SendTextMessageAsync(message.Chat.Id, "Spamming users will be banned.", cancellationToken: cancellationToken);
+                    await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_be_banned, cancellationToken: cancellationToken);
                     break;
 
                 case "/no_restrict":
@@ -301,7 +331,7 @@ public class BotLogic(string botToken, long? ownerId)
                         Settings.UseMute = false;
                     }
 
-                    await client.SendTextMessageAsync(message.Chat.Id, "Spamming users will not be restricted.", cancellationToken: cancellationToken);
+                    await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_not_be_restricted, cancellationToken: cancellationToken);
                     break;
 
                 case "/mute":
@@ -311,7 +341,7 @@ public class BotLogic(string botToken, long? ownerId)
                         Settings.BanUsers = false;
                     }
 
-                    await client.SendTextMessageAsync(message.Chat.Id, "Spamming users will be muted.", cancellationToken: cancellationToken);
+                    await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_be_muted, cancellationToken: cancellationToken);
                     break;
 
                 case "/set_spam_time":
@@ -339,7 +369,7 @@ public class BotLogic(string botToken, long? ownerId)
                             Settings.RestrictionDuration = null;
                         }
 
-                        await client.SendTextMessageAsync(message.Chat.Id, "Restriction duration set to forever.", cancellationToken: cancellationToken);
+                        await client.SendTextMessageAsync(message.Chat.Id, Resource.Restriction_forever, cancellationToken: cancellationToken);
                     }
                     else if (uint.TryParse(args, out var restrictionMinutes) && restrictionMinutes > 0)
                     {
@@ -348,11 +378,11 @@ public class BotLogic(string botToken, long? ownerId)
                             Settings.RestrictionDuration = TimeSpan.FromMinutes(restrictionMinutes);
                         }
 
-                        await client.SendTextMessageAsync(message.Chat.Id, $"Restriction duration set to {restrictionMinutes} minutes.", cancellationToken: cancellationToken);
+                        await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.Restriction_duration, restrictionMinutes), cancellationToken: cancellationToken);
                     }
                     else
                     {
-                        await client.SendTextMessageAsync(message.Chat.Id, "Invalid restriction duration specified. Please provide '0' for infinite or a positive integer in minutes.", cancellationToken: cancellationToken);
+                        await client.SendTextMessageAsync(message.Chat.Id, Resource.Invalid_restriction_duration, cancellationToken: cancellationToken);
                     }
 
                     break;
@@ -365,31 +395,32 @@ public class BotLogic(string botToken, long? ownerId)
                         silentMode = Settings.SilentMode;
                     }
 
-                    await client.SendTextMessageAsync(message.Chat.Id, $"Silent mode is now {(silentMode ? "enabled" : "disabled")}.", cancellationToken: cancellationToken);
+                    await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.Silent_mode, silentMode ? "enabled" : "disabled"), cancellationToken: cancellationToken);
                     break;
 
                 case "/help":
-                    const string helpText = "Available commands:\n" +
-                                            "/ban - Enable banning users when deleting spam\n" +
-                                            "/no_restrict - Disable restricting users when deleting spam\n" +
-                                            "/mute - Mute users instead of banning\n" +
-                                            "/set_spam_time <seconds> - Set the spam time window in seconds\n" +
-                                            "/set_restriction_time <minutes or 0> - Set the restriction duration in minutes or '0' for infinite\n" +
-                                            "/silent - Toggle silent mode (no messages on spam actions)\n" +
-                                            "/help - Show this help message";
+                    var helpText =
+                        $"Available commands:{Environment.NewLine}" +
+                        $"/ban - {Resource.Enable_banning}{Environment.NewLine}" +
+                        $"/no_restrict - {Resource.Disable_any_restricting}{Environment.NewLine}" +
+                        $"/mute - {Resource.Enable_muting}{Environment.NewLine}" +
+                        $"/set_spam_time <seconds> - {Resource.Set_the_spam_time}{Environment.NewLine}" +
+                        $"/set_restriction_time <minutes or 0> - {Resource.Set_the_restriction_duration}{Environment.NewLine}" +
+                        $"/silent - {Resource.Toggle_silent}{Environment.NewLine}" +
+                        $"/help - Show this help message";
                     await client.SendTextMessageAsync(message.Chat.Id, helpText, cancellationToken: cancellationToken);
                     break;
 
                 default:
-                    await client.SendTextMessageAsync(message.Chat.Id, "Unknown command.", cancellationToken: cancellationToken);
+                    await client.SendTextMessageAsync(message.Chat.Id, Resource.UnknownCommand, cancellationToken: cancellationToken);
                     break;
             }
         }
     }
 
-    internal async Task HandleSpamAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    private async Task HandleSpamAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
-        if (!_engaged || message.From == null)
+        if (!Engaged || message.From == null)
         {
             return;
         }
@@ -494,21 +525,21 @@ public class BotLogic(string botToken, long? ownerId)
         }
     }
 
-    internal async Task<bool> CheckGroupOwnership(ThrottledTelegramBotClient client, long chatId, CancellationToken cancellationToken)
+    private async Task<bool> CheckGroupOwnership(ThrottledTelegramBotClient client, long chatId, CancellationToken cancellationToken)
     {
         if (ownerId.HasValue)
         {
             var administrators = await client.GetChatAdministratorsAsync(chatId, cancellationToken: cancellationToken);
-            if (!administrators.Any())
+            if (administrators.Length == 0)
             {
-                throw new RequestException("Bot is not an Admin.");
+                throw new RequestException(Resource.not_an_Admin);
             }
 
             if (administrators.FirstOrDefault(admin => admin.Status == ChatMemberStatus.Creator)?.User.Id != ownerId)
             {
                 await client.SendTextMessageAsync(
                     chatId,
-                    "This chat does not belong to bot owner.",
+                    Resource.chat_does_not_belong_owner,
                     disableNotification: true,
                     cancellationToken: cancellationToken);
 
@@ -519,7 +550,7 @@ public class BotLogic(string botToken, long? ownerId)
         return true;
     }
 
-    internal async Task<ChatMemberStatus> GetChatMemberStatus(ThrottledTelegramBotClient client, Chat chat, long userId, CancellationToken cancellationToken)
+    private async Task<ChatMemberStatus> GetChatMemberStatus(ThrottledTelegramBotClient client, Chat chat, long userId, CancellationToken cancellationToken)
     {
         var chatMember = await client.GetChatMemberAsync(chat.Id, userId, cancellationToken);
         var isAdmin = chatMember is ChatMemberAdministrator { CanRestrictMembers: true };
@@ -556,10 +587,10 @@ public class BotLogic(string botToken, long? ownerId)
 
         sb.AppendLine(ex.Message).Append(" | ");
 
-        return $"API Error: \n{sb}";
+        return $"API Error: {Environment.NewLine}{sb}";
     }
 
-    internal bool IsReplyToLinkedChannelPost(Message message)
+    private static bool IsReplyToLinkedChannelPost(Message message)
     {
         return message.ReplyToMessage?.From?.Id == GenericTelegramId;
     }

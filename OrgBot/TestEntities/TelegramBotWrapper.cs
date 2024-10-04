@@ -6,33 +6,17 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
-namespace OrgBot;
+namespace OrgBot.TestEntities;
 
 public class TelegramBotWrapper(string botToken) : IMyTelegramBotClient
 {
-    private readonly ITelegramBotClient _client = new TelegramBotClient(botToken)
-    {
-        Timeout = TimeSpan.FromSeconds(60)
-    };
-
-    public async Task<TResponse> MakeRequestAsync<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = new())
-    {
-        return await _client.MakeRequestAsync(request, cancellationToken);
-    }
-
-    public async Task<bool> TestApiAsync(CancellationToken cancellationToken = new())
-    {
-        return await _client.TestApiAsync(cancellationToken);
-    }
-
-    public async Task DownloadFileAsync(string filePath, Stream destination, CancellationToken cancellationToken = new())
-    {
-        await _client.DownloadFileAsync(filePath, destination, cancellationToken);
-    }
-
     public bool LocalBotServer => _client.LocalBotServer;
 
-    public long? BotId => _client.BotId;
+    public long? BotId
+    {
+        get => _client.BotId;
+        set => throw new NotImplementedException("For testing purposes only.");
+    }
 
     public TimeSpan Timeout
     {
@@ -56,6 +40,26 @@ public class TelegramBotWrapper(string botToken) : IMyTelegramBotClient
     {
         add => _client.OnApiResponseReceived += value;
         remove => _client.OnApiResponseReceived -= value;
+    }
+
+    private readonly ITelegramBotClient _client = new TelegramBotClient(botToken)
+    {
+        Timeout = TimeSpan.FromSeconds(60)
+    };
+
+    public async Task<TResponse> MakeRequestAsync<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = new())
+    {
+        return await _client.MakeRequestAsync(request, cancellationToken);
+    }
+
+    public async Task<bool> TestApiAsync(CancellationToken cancellationToken = new())
+    {
+        return await _client.TestApiAsync(cancellationToken);
+    }
+
+    public async Task DownloadFileAsync(string filePath, Stream destination, CancellationToken cancellationToken = new())
+    {
+        await _client.DownloadFileAsync(filePath, destination, cancellationToken);
     }
 
     public async Task<User> GetMeAsync(CancellationToken cancellationToken = default)

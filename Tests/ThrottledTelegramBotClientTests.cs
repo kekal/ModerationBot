@@ -1,4 +1,5 @@
 using Moq;
+using OrgBot.TestEntities;
 using System.Diagnostics;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -182,7 +183,7 @@ public class ThrottledTelegramBotClientTests
         const string phoneNumber = "+1234567890";
         const string firstName = "John";
         const string lastName = "Doe";
-        const string vCard = "BEGIN:VCARD\nVERSION:2.1\nN:Doe;John\nTEL;CELL:+1234567890\nEND:VCARD";
+        var vCard = $"BEGIN:VCARD{Environment.NewLine}VERSION:2.1{Environment.NewLine}N:Doe;John{Environment.NewLine}TEL;CELL:+1234567890{Environment.NewLine}END:VCARD";
         var cancellationToken = CancellationToken.None;
 
         _mockClient.Setup(c => c.SendContactAsync(

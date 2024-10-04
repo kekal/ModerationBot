@@ -1,4 +1,6 @@
-﻿namespace OrgBot;
+﻿using OrgBot.TestEntities;
+
+namespace OrgBot;
 
 public static class ProgramEntryPoint
 {
@@ -18,7 +20,7 @@ public static class ProgramEntryPoint
             await Console.Out.WriteLineAsync($"Bot will work only for chats created by the user {ownerId}");
         }
 
-        var program = new BotLogic(botToken, ownerId);
+        var program = new BotLogic(botToken, ownerId, new ApplicationLifetime());
         await program.RunAsync();
     }
 }
