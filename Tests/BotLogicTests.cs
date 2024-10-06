@@ -1,9 +1,10 @@
 using Moq;
-using OrgBot.TestEntities;
+using OrgBot.TestingEntities;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
+using File = System.IO.File;
 
 namespace OrgBot.Tests;
 
@@ -16,10 +17,18 @@ public class BotLogicTests
     private ThrottledTelegramBotClient _throttledClient = null!;
     private const long OwnerId = 123456789;
     private const string BotToken = "test_bot_token";
+    private const string TestSettingsFilePath = "test_botsettings.json";
 
     [TestInitialize]
     public void Setup()
     {
+        Environment.SetEnvironmentVariable("SETTINGS_PATH", TestSettingsFilePath);
+
+        if (File.Exists(TestSettingsFilePath))
+        {
+            File.Delete(TestSettingsFilePath);
+        }
+
         _mockTelegramBotClient = new Mock<IMyTelegramBotClient>();
         _throttledClient = new ThrottledTelegramBotClient(_mockTelegramBotClient.Object, TimeSpan.FromMilliseconds(100));
         _mockApplicationLifetime = new Mock<IApplicationLifetime>();
@@ -27,6 +36,20 @@ public class BotLogicTests
 
 
         _botLogic.SetupLogger();
+    }
+
+    [TestCleanup]
+    public void Cleanup()
+    {
+        if (File.Exists(TestSettingsFilePath))
+        {
+            File.Delete(TestSettingsFilePath);
+        }
+
+        Environment.SetEnvironmentVariable("SETTINGS_PATH", null);
+
+        _mockTelegramBotClient.Reset();
+        _mockApplicationLifetime.Reset();
     }
 
     [TestMethod]
@@ -84,7 +107,7 @@ public class BotLogicTests
     public async Task SetCommandsAsync_ShouldSetCommands()
     {
         // Act
-        await BotLogic.SetCommandsAsync(_throttledClient);
+        await _botLogic.SetCommandsAsync(_throttledClient);
 
         // Assert
         _mockTelegramBotClient.Verify(c => c.SetMyCommandsAsync(
@@ -238,13 +261,9 @@ public class BotLogicTests
     [TestMethod]
     public async Task HandleUpdateAsync_SpamMessageWithSilentMode_ShouldNotSendNotification()
     {
-        // Arrange
-        lock (_botLogic.Settings)
-        {
-            _botLogic.Settings.SilentMode = true;
-        }
-
         var chat = new Chat { Id = 5005, Type = ChatType.Group };
+
+
         var spammer = new User { Id = 987654, FirstName = "Spammer" };
         var message = new Message
         {
@@ -261,6 +280,9 @@ public class BotLogicTests
             }
         };
         var update = new Update { Id = 1, Message = message };
+
+        // Arrange
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.SilentMode), true);
 
         // Act
         await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
@@ -303,10 +325,7 @@ public class BotLogicTests
         };
         var update = new Update { Id = 1, Message = message };
 
-        lock (_botLogic.Settings)
-        {
-            _botLogic.Settings.SilentMode = false;
-        }
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.SilentMode), false);
 
         _mockTelegramBotClient.Setup(c => c.GetChatAdministratorsAsync(
                 chat.Id,
@@ -328,10 +347,8 @@ public class BotLogicTests
         await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
 
         // Assert
-        lock (_botLogic.Settings)
-        {
-            Assert.IsTrue(_botLogic.Settings.SilentMode);
-        }
+        Assert.IsTrue(_botLogic.Settings.GetGroupSettings(chat.Id).SilentMode);
+        
 
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
                 chat.Id,
@@ -354,14 +371,12 @@ public class BotLogicTests
     public async Task HandleUpdateAsync_SpamMessage_ShouldDeleteAndBanUser()
     {
         // Arrange
-        lock (_botLogic.Settings)
-        {
-            _botLogic.Settings.BanUsers = true;
-            _botLogic.Settings.UseMute = false;
-            _botLogic.Settings.RestrictionDuration = TimeSpan.FromHours(1);
-        }
-
         var chat = new Chat { Id = 7007, Type = ChatType.Group };
+
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.BanUsers), true);
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.UseMute), false);
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.RestrictionDuration), TimeSpan.FromHours(1));
+        
         var spammer = new User { Id = 123456, FirstName = "Spammer" };
         var message = new Message
         {
@@ -427,10 +442,7 @@ public class BotLogicTests
         };
         var update = new Update { Id = 1, Message = message };
 
-        lock (_botLogic.Settings)
-        {
-            _botLogic.Settings.BanUsers = false;
-        }
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.BanUsers), false);
 
         _mockTelegramBotClient.Setup(c => c.GetChatAdministratorsAsync(
                 chat.Id,
@@ -452,10 +464,7 @@ public class BotLogicTests
         await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
 
         // Assert
-        lock (_botLogic.Settings)
-        {
-            Assert.IsTrue(_botLogic.Settings.BanUsers);
-        }
+        Assert.IsTrue(_botLogic.Settings.GetGroupSettings(chat.Id).BanUsers);
 
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
             chat.Id,
@@ -484,10 +493,13 @@ public class BotLogicTests
             Text = "/help",
             Entities = [new MessageEntity { Type = MessageEntityType.BotCommand, Offset = 0, Length = 5 }]
         };
+
+        _botLogic.Settings.LogSize = 30;
+
         var update = new Update { Id = 1, Message = message };
         var privateHelpText =
             $"Available commands:{Environment.NewLine}" +
-            $"/log - {string.Format(Resource.Show_the_last_actions, 30)}{Environment.NewLine}" +
+            $"/log - {string.Format(Resource.Show_the_last_actions, _botLogic.Settings.LogSize)}{Environment.NewLine}" +
             $"/engage - {Resource.Start}{Environment.NewLine}" +
             $"/disengage - {Resource.Pause}{Environment.NewLine}" +
             $"/restart_service - {Resource.Restarting}{Environment.NewLine}" +
@@ -541,7 +553,6 @@ public class BotLogicTests
             .ReturnsAsync([]);
 
         // Act
-
         await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
 
         // Assert
@@ -564,14 +575,12 @@ public class BotLogicTests
     public async Task HandleUpdateAsync_SpamMessageFromChannel_ShouldBanChatSenderChat()
     {
         // Arrange
-        lock (_botLogic.Settings)
-        {
-            _botLogic.Settings.BanUsers = true;
-            _botLogic.Settings.UseMute = false;
-            _botLogic.Settings.RestrictionDuration = TimeSpan.FromHours(1);
-        }
-
         var chat = new Chat { Id = 10002, Type = ChatType.Group };
+
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.BanUsers), true);
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.UseMute), false);
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.RestrictionDuration), TimeSpan.FromHours(1));
+        
         var spammer = new User { Id = BotLogic.UserAsTheChannelId, FirstName = "ChannelUser" };
         var senderChat = new Chat { Id = 1234567890, Title = "SpamChannel", Username = "spamChannel" };
 
@@ -747,13 +756,13 @@ public class BotLogicTests
         };
         var update = new Update { Id = 1, Message = message };
 
-        _botLogic.Engaged = false;
+        _botLogic.Settings.Engaged = false;
 
         // Act
         await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
 
         // Assert
-        Assert.IsTrue(_botLogic.Engaged);
+        Assert.IsTrue(_botLogic.Settings.Engaged);
 
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
             message.Chat.Id,
@@ -819,11 +828,8 @@ public class BotLogicTests
         };
         var update = new Update { Id = 1, Message = message };
 
-        lock (_botLogic.Settings)
-        {
-            _botLogic.Settings.BanUsers = true;
-            _botLogic.Settings.UseMute = true;
-        }
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.BanUsers), true);
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.UseMute), true);
 
         _mockTelegramBotClient.Setup(c => c.GetChatMemberAsync(
                 chat.Id,
@@ -838,12 +844,9 @@ public class BotLogicTests
         await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
 
         // Assert
-        lock (_botLogic.Settings)
-        {
-            Assert.IsFalse(_botLogic.Settings.BanUsers);
-            Assert.IsFalse(_botLogic.Settings.UseMute);
-        }
-
+        Assert.IsFalse(_botLogic.Settings.GetGroupSettings(chat.Id).BanUsers);
+        Assert.IsFalse(_botLogic.Settings.GetGroupSettings(chat.Id).UseMute); 
+        
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
             chat.Id,
             Resource.users_will_not_be_restricted,
@@ -897,10 +900,7 @@ public class BotLogicTests
         await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
 
         // Assert
-        lock (_botLogic.Settings)
-        {
-            Assert.AreEqual(TimeSpan.FromSeconds(10), _botLogic.Settings.SpamTimeWindow);
-        }
+        Assert.AreEqual(TimeSpan.FromSeconds(10), _botLogic.Settings.GetGroupSettings(chat.Id).SpamTimeWindow);
 
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
             chat.Id,
@@ -1299,13 +1299,13 @@ public class BotLogicTests
         };
         var update = new Update { Id = 1, Message = message };
 
-        _botLogic.Engaged = true;
+        _botLogic.Settings.Engaged = true;
 
         // Act
         await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
 
         // Assert
-        Assert.IsFalse(_botLogic.Engaged);
+        Assert.IsFalse(_botLogic.Settings.Engaged);
 
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
             message.Chat.Id,
@@ -1373,11 +1373,8 @@ public class BotLogicTests
         };
         var update = new Update { Id = 1, Message = message };
 
-        lock (_botLogic.Settings)
-        {
-            _botLogic.Settings.BanUsers = true;
-            _botLogic.Settings.UseMute = false;
-        }
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.BanUsers), true);
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.UseMute), false);
 
         _mockTelegramBotClient.Setup(c => c.GetChatMemberAsync(
                 chat.Id,
@@ -1402,11 +1399,8 @@ public class BotLogicTests
         await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
 
         // Assert
-        lock (_botLogic.Settings)
-        {
-            Assert.IsFalse(_botLogic.Settings.BanUsers);
-            Assert.IsTrue(_botLogic.Settings.UseMute);
-        }
+        Assert.IsFalse(_botLogic.Settings.GetGroupSettings(chat.Id).BanUsers);
+        Assert.IsTrue(_botLogic.Settings.GetGroupSettings(chat.Id).UseMute);
 
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
             chat.Id,
@@ -1463,10 +1457,7 @@ public class BotLogicTests
         await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
 
         // Assert
-        lock (_botLogic.Settings)
-        {
-            Assert.AreEqual(TimeSpan.FromMinutes(restrictionMinutes), _botLogic.Settings.RestrictionDuration);
-        }
+        Assert.AreEqual(TimeSpan.FromMinutes(restrictionMinutes), _botLogic.Settings.GetGroupSettings(chat.Id).RestrictionDuration);
 
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
                 chat.Id,
@@ -1523,10 +1514,7 @@ public class BotLogicTests
         await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
 
         // Assert
-        lock (_botLogic.Settings)
-        {
-            Assert.AreEqual(null, _botLogic.Settings.RestrictionDuration);
-        }
+        Assert.AreEqual(null, _botLogic.Settings.GetGroupSettings(chat.Id).RestrictionDuration);
 
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
                 chat.Id,
@@ -1627,7 +1615,7 @@ public class BotLogicTests
     public async Task HandleUpdateAsync_MessageNotReplyToLinkedChannelPost_ShouldNotTakeAction()
     {
         // Arrange
-        _botLogic.Engaged = true;
+        _botLogic.Settings.Engaged = true;
 
         var chat = new Chat { Id = 10028, Type = ChatType.Group };
         var user = new User { Id = 123456, FirstName = "User" };
@@ -1690,4 +1678,92 @@ public class BotLogicTests
             Times.Never);
     }
 
+    [TestMethod]
+    public async Task ConfigurationPersistence_AfterRestart_BotUsesPersistedSettings()
+    {
+        // Arrange
+        var chat = new Chat { Id = 9001, Type = ChatType.Group };
+        var adminUser = new User { Id = OwnerId, FirstName = "Owner" };
+        var spammer = new User { Id = 98765, FirstName = "Spammer" };
+
+        var banCommandMessage = new Message
+        {
+            MessageId = 1,
+            From = adminUser,
+            Chat = chat,
+            Text = "/ban",
+            Entities = [new MessageEntity { Type = MessageEntityType.BotCommand, Offset = 0, Length = 4 }]
+        };
+        var banCommandUpdate = new Update { Id = 1, Message = banCommandMessage };
+
+        _mockTelegramBotClient.Setup(c => c.GetChatMemberAsync(
+                chat.Id,
+                adminUser.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatMemberOwner
+            {
+                User = adminUser
+            });
+
+        _mockTelegramBotClient.Setup(c => c.GetChatAdministratorsAsync(
+                chat.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new ChatMemberOwner { User = adminUser }]);
+
+        // Act
+        await _botLogic.HandleUpdateAsync(_throttledClient, banCommandUpdate, CancellationToken.None);
+
+        //clear
+        _mockTelegramBotClient.Invocations.Clear();
+
+        // Arrange 2
+        var newBotLogic = new BotLogic(BotToken, OwnerId, _mockApplicationLifetime.Object);
+        newBotLogic.SetupLogger();
+
+        var spamMessage = new Message
+        {
+            MessageId = 2,
+            From = spammer,
+            Chat = chat,
+            Text = "Spam message",
+            Date = DateTime.UtcNow,
+            ReplyToMessage = new Message
+            {
+                MessageId = 3,
+                From = new User { Id = BotLogic.GenericTelegramId },
+                Date = DateTime.UtcNow.AddSeconds(-5)
+            }
+        };
+        var spamUpdate = new Update { Id = 2, Message = spamMessage };
+
+        // Act 2
+        await newBotLogic.HandleUpdateAsync(_throttledClient, spamUpdate, CancellationToken.None);
+
+        // Assert
+        _mockTelegramBotClient.Verify(c => c.BanChatMemberAsync(
+            chat.Id,
+            spammer.Id,
+            It.IsAny<DateTime?>(),
+            false,
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        _mockTelegramBotClient.Verify(c => c.DeleteMessageAsync(
+            chat.Id,
+            spamMessage.MessageId,
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
+            chat.Id,
+            It.Is<string>(s => s.Contains("has been banned")),
+            default,
+            default,
+            default,
+            default,
+            true,
+            default,
+            spamMessage.MessageId,
+            true,
+            default,
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

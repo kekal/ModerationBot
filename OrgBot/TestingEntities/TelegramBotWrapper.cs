@@ -6,17 +6,13 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
-namespace OrgBot.TestEntities;
+namespace OrgBot.TestingEntities;
 
 public class TelegramBotWrapper(string botToken) : IMyTelegramBotClient
 {
     public bool LocalBotServer => _client.LocalBotServer;
 
-    public long? BotId
-    {
-        get => _client.BotId;
-        set => throw new NotImplementedException("For testing purposes only.");
-    }
+    public long? BotId => _client.BotId;
 
     public TimeSpan Timeout
     {
@@ -42,7 +38,7 @@ public class TelegramBotWrapper(string botToken) : IMyTelegramBotClient
         remove => _client.OnApiResponseReceived -= value;
     }
 
-    private readonly ITelegramBotClient _client = new TelegramBotClient(botToken)
+    private readonly TelegramBotClient _client = new(botToken)
     {
         Timeout = TimeSpan.FromSeconds(60)
     };

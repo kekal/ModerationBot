@@ -1,4 +1,4 @@
-﻿using OrgBot.TestEntities;
+﻿using OrgBot.TestingEntities;
 
 namespace OrgBot;
 

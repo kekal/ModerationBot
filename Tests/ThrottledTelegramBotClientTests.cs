@@ -1,6 +1,6 @@
 using Moq;
-using OrgBot.TestEntities;
 using System.Diagnostics;
+using OrgBot.TestingEntities;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;

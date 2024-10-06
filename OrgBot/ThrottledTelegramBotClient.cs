@@ -1,4 +1,4 @@
-﻿using OrgBot.TestEntities;
+﻿using OrgBot.TestingEntities;
 using System.Reflection;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;

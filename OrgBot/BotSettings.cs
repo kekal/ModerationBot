@@ -1,5 +1,8 @@
-﻿using System.Reflection;
+﻿using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
+
+[assembly: InternalsVisibleTo("OrgBot.BotSettingsTests")]
 
 namespace OrgBot;
 
@@ -16,7 +19,7 @@ public class BotSettings
     private bool _engaged = true;
     private uint _logSize;
 
-    public Dictionary<long, GroupSettings> GroupSettings { get; init; } = [];
+    public ConcurrentDictionary<long, GroupSettings> GroupSettings { get; init; } = [];
 
     public bool Engaged
     {
@@ -40,12 +43,16 @@ public class BotSettings
 
     public GroupSettings GetGroupSettings(long groupId)
     {
-        if (!GroupSettings.TryGetValue(groupId, out var settings))
+        lock (GroupSettings)
         {
-            settings = new GroupSettings();
-            GroupSettings[groupId] = settings;
+            if (!GroupSettings.TryGetValue(groupId, out var settings))
+            {
+                settings = new GroupSettings();
+                GroupSettings[groupId] = settings;
+            }
+
+            return settings;
         }
-        return settings;
     }
 
     public void SetGroupSettings<T>(long groupId, string setting, T value)
@@ -65,13 +72,14 @@ public class BotSettings
         {
             throw new ArgumentException($"The value type {typeof(T).Name} is not compatible with the setting '{setting}' which expects {propertyType.Name}.");
         }
-        property.SetValue(groupSettings, value);
 
+        property.SetValue(groupSettings, value);
         GroupSettings[groupId] = groupSettings;
+
         Save();
     }
 
-    private void Save()
+    internal void Save()
     {
         var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(SettingsFilePath, json);

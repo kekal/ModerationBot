@@ -1,4 +1,4 @@
-﻿using OrgBot.TestEntities;
+﻿using OrgBot.TestingEntities;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Telegram.Bot.Exceptions;

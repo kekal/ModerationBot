@@ -1,4 +1,4 @@
-﻿namespace OrgBot.TestEntities;
+﻿namespace OrgBot.TestingEntities;
 
 public interface IApplicationLifetime
 {

@@ -3,7 +3,7 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
-namespace OrgBot.TestEntities;
+namespace OrgBot.TestingEntities;
 
 public interface IMyTelegramBotClient : ITelegramBotClient
 {
