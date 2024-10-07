@@ -399,3 +399,4 @@ FodyWeavers.xsd
 OrgBot/Properties/launchSettings.json
 log.txt
 OrgBot/botsettings.json
+OrgBot/bot_log.txt
