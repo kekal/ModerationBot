@@ -16,8 +16,6 @@ VOLUME /app/data
 
 ENV BOT_TOKEN=YOUR_BOT_TOKEN
 ENV OWNER=YOUR_TELEGRAM_ID
-COPY botsettings.json /app/data/botsettings.json
-
 ENV SETTINGS_PATH=/app/data/botsettings.json
 
 ENTRYPOINT ["dotnet", "OrgBot.dll"]

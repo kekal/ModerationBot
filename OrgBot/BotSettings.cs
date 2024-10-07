@@ -17,7 +17,7 @@ public class BotSettings
     }
 
     private bool _engaged = true;
-    private uint _logSize;
+    private uint _logSize = 30;
 
     public ConcurrentDictionary<long, GroupSettings> GroupSettings { get; init; } = [];
 
@@ -43,7 +43,7 @@ public class BotSettings
 
     public GroupSettings GetGroupSettings(long groupId)
     {
-        lock (GroupSettings)
+        lock (this)
         {
             if (!GroupSettings.TryGetValue(groupId, out var settings))
             {
@@ -57,42 +57,51 @@ public class BotSettings
 
     public void SetGroupSettings<T>(long groupId, string setting, T value)
     {
-        var groupSettings = GetGroupSettings(groupId);
-
-        var property = typeof(GroupSettings).GetProperty(setting);
-        if (property == null || !property.CanWrite)
+        lock (this)
         {
-            throw new ArgumentException($"Setting '{setting}' is not valid or cannot be set.");
+            var groupSettings = GetGroupSettings(groupId);
+
+            var property = typeof(GroupSettings).GetProperty(setting);
+            if (property == null || !property.CanWrite)
+            {
+                throw new ArgumentException($"Setting '{setting}' is not valid or cannot be set.");
+            }
+
+            var propertyType = property.PropertyType;
+            var underlyingType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+
+            if (typeof(T) != underlyingType && typeof(T) != propertyType)
+            {
+                throw new ArgumentException($"The value type {typeof(T).Name} is not compatible with the setting '{setting}' which expects {propertyType.Name}.");
+            }
+
+            property.SetValue(groupSettings, value);
+            GroupSettings[groupId] = groupSettings;
+
+            Save();
         }
-
-        var propertyType = property.PropertyType;
-        var underlyingType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
-
-        if (typeof(T) != underlyingType && typeof(T) != propertyType)
-        {
-            throw new ArgumentException($"The value type {typeof(T).Name} is not compatible with the setting '{setting}' which expects {propertyType.Name}.");
-        }
-
-        property.SetValue(groupSettings, value);
-        GroupSettings[groupId] = groupSettings;
-
-        Save();
     }
 
     internal void Save()
     {
-        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(SettingsFilePath, json);
+        lock (this)
+        {
+            var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(SettingsFilePath, json);
+        }
     }
 
     public static BotSettings Load()
     {
-        if (File.Exists(SettingsFilePath))
+        lock (SettingsFilePath)
         {
-            var json = File.ReadAllText(SettingsFilePath);
-            return JsonSerializer.Deserialize<BotSettings>(json) ?? new BotSettings();
-        }
+            if (File.Exists(SettingsFilePath))
+            {
+                var json = File.ReadAllText(SettingsFilePath);
+                return JsonSerializer.Deserialize<BotSettings>(json) ?? new BotSettings();
+            }
 
-        return new BotSettings();
+            return new BotSettings();
+        }
     }
 }

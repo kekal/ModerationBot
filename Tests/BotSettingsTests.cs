@@ -35,7 +35,7 @@ public class BotSettingsTests
 
         // Assert
         Assert.IsTrue(settings.Engaged);
-        Assert.AreEqual(0u, settings.LogSize);
+        Assert.AreEqual(30u, settings.LogSize);
         Assert.IsNotNull(settings.GroupSettings);
         Assert.AreEqual(0, settings.GroupSettings.Count);
     }

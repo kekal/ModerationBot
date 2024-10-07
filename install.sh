@@ -42,6 +42,7 @@ build_and_run() {
     fi
 
     docker run -d --name telegram_bot_container \
+        -v $(pwd):/app/data \
         -e BOT_TOKEN="$BOT_TOKEN" \
         -e OWNER="$OWNER" \
         telegram_bot_image

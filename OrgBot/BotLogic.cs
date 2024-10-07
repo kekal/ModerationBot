@@ -131,11 +131,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
 
     internal async Task SetCommandsAsync(ThrottledTelegramBotClient client)
     {
-        uint logSize;
-        lock (Settings)
-        {
-            logSize = Settings.LogSize;
-        }
+        var logSize = Settings.LogSize;
 
         var groupCommands = new[]
         {
@@ -234,27 +230,17 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         switch (commandText.Split('@')[0])
         {
             case "/log":
-                string logContent;
-                lock (ActionLog)
-                {
-                    logContent = string.Join($"{Environment.NewLine}{Environment.NewLine}{Environment.NewLine}", ActionLog);
-                }
+                var logContent = string.Join($"{Environment.NewLine}{Environment.NewLine}{Environment.NewLine}", ActionLog);
                 await client.SendTextMessageAsync(message.Chat.Id, string.IsNullOrWhiteSpace(logContent) ? "No actions logged yet." : logContent, cancellationToken: cancellationToken);
                 break;
 
             case "/engage":
-                lock (Settings)
-                {
-                    Settings.Engaged = true;
-                }
+                Settings.Engaged = true;
                 await client.SendTextMessageAsync(message.Chat.Id, Resource.Bot_is_engaged, cancellationToken: cancellationToken);
                 break;
 
             case "/disengage":
-                lock (Settings)
-                {
-                    Settings.Engaged = false;
-                }
+                Settings.Engaged = false;
                 await client.SendTextMessageAsync(message.Chat.Id, Resource.Bot_disengaged, cancellationToken: cancellationToken);
                 break;
 
@@ -273,11 +259,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
                 break;
 
             case "/help":
-                uint logSize;
-                lock (Settings)
-                {
-                    logSize = Settings.LogSize;
-                }
+                var logSize = Settings.LogSize;
                 
                 var privateHelpText =
                     $"Available commands:{Environment.NewLine}" +
@@ -318,7 +300,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
 
         var status = await GetChatMemberStatus(client, message.Chat, message.From.Id, cancellationToken);
 
-        if (status == ChatMemberStatus.Member)
+        if (status is not ChatMemberStatus.Administrator and not ChatMemberStatus.Creator)
         {
             return;
         }
@@ -332,31 +314,22 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
             switch (commandText.Split('@')[0])
             {
                 case "/ban":
-                    lock (Settings)
-                    {
-                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), true);
-                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), false);
-                    }
+                    Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), true);
+                    Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), false);
 
                     await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_be_banned, cancellationToken: cancellationToken);
                     break;
 
                 case "/no_restrict":
-                    lock (Settings)
-                    {
                         Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), false);
                         Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), false);
-                    }
 
                     await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_not_be_restricted, cancellationToken: cancellationToken);
                     break;
 
                 case "/mute":
-                    lock (Settings)
-                    {
-                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), true);
-                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), false);
-                    }
+                    Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), true);
+                    Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), false);
 
                     await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_be_muted, cancellationToken: cancellationToken);
                     break;
@@ -364,10 +337,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
                 case "/set_spam_time":
                     if (byte.TryParse(args, out var seconds) && seconds > 0)
                     {
-                        lock (Settings)
-                        {
-                            Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.SpamTimeWindow), TimeSpan.FromSeconds(seconds));
-                        }
+                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.SpamTimeWindow), TimeSpan.FromSeconds(seconds));
 
                         await client.SendTextMessageAsync(message.Chat.Id, $"Spam time window set to {seconds} seconds.", cancellationToken: cancellationToken);
                     }
@@ -381,19 +351,13 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
                 case "/set_restriction_time":
                     if (args.Trim().Equals("0", StringComparison.OrdinalIgnoreCase))
                     {
-                        lock (Settings)
-                        {
-                            Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.RestrictionDuration), (TimeSpan?)null);
-                        }
+                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.RestrictionDuration), (TimeSpan?)null);
 
                         await client.SendTextMessageAsync(message.Chat.Id, Resource.Restriction_forever, cancellationToken: cancellationToken);
                     }
                     else if (uint.TryParse(args, out var restrictionMinutes) && restrictionMinutes > 0)
                     {
-                        lock (Settings)
-                        {
-                            Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.RestrictionDuration), TimeSpan.FromMinutes(restrictionMinutes));
-                        }
+                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.RestrictionDuration), TimeSpan.FromMinutes(restrictionMinutes));
 
                         await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.Restriction_duration, restrictionMinutes), cancellationToken: cancellationToken);
                     }
@@ -437,22 +401,8 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
 
     private async Task HandleSpamAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
-        TimeSpan spamTimeWindow;
-        bool banUsers;
-        bool useMute;
-        TimeSpan? restrictionDuration;
-        bool silentMode;
-        bool engaged;
-
-        lock (Settings)
-        {
-            spamTimeWindow = Settings.GetGroupSettings(message.Chat.Id).SpamTimeWindow;
-            banUsers = Settings.GetGroupSettings(message.Chat.Id).BanUsers;
-            useMute = Settings.GetGroupSettings(message.Chat.Id).UseMute;
-            restrictionDuration = Settings.GetGroupSettings(message.Chat.Id).RestrictionDuration;
-            silentMode = Settings.GetGroupSettings(message.Chat.Id).SilentMode;
-            engaged = Settings.Engaged;
-        }
+        var spamTimeWindow = Settings.GetGroupSettings(message.Chat.Id).SpamTimeWindow;
+        var engaged = Settings.Engaged;
 
         if (!engaged || message.From == null)
         {
@@ -464,84 +414,103 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
             return;
         }
 
+        if (message.Entities?.Any(e => e.Type is MessageEntityType.Url or MessageEntityType.TextLink) is true)
+        {
+            var status = await GetChatMemberStatus(client, message.Chat, message.From.Id, cancellationToken);
+            if (status is not ChatMemberStatus.Administrator and not ChatMemberStatus.Creator and not ChatMemberStatus.Member)
+            {
+                await ElaborateSpam(client, message, cancellationToken);
+            }
+        }
+
         if (message.Date - message.ReplyToMessage!.Date < spamTimeWindow)
         {
-            var user = $"{message.From.FirstName} {message.From.LastName} @{message.From.Username} ({message.From.Id}){(message.From.IsBot ? " (bot)" : string.Empty)}";
+            await ElaborateSpam(client, message, cancellationToken);
+        }
+    }
 
-            await client.DeleteMessageAsync(message.Chat.Id, message.MessageId, cancellationToken);
+    private async Task ElaborateSpam(ThrottledTelegramBotClient client, Message  message, CancellationToken cancellationToken)
+    {
+        var restrictionDuration = Settings.GetGroupSettings(message.Chat.Id).RestrictionDuration;
+        var banUsers = Settings.GetGroupSettings(message.Chat.Id).BanUsers;
+        var useMute = Settings.GetGroupSettings(message.Chat.Id).UseMute;
+        var silentMode = Settings.GetGroupSettings(message.Chat.Id).SilentMode;
 
-            var actionTaken = string.Empty;
+        var user = $"{message.From!.FirstName} {message.From.LastName} @{message.From.Username} ({message.From.Id}){(message.From.IsBot ? " (bot)" : string.Empty)}";
 
-            if (message.From.Id == UserAsTheChannelId && message.SenderChat?.Id is { } senderChatId && (banUsers || useMute))
+        await client.DeleteMessageAsync(message.Chat.Id, message.MessageId, cancellationToken);
+
+        var actionTaken = string.Empty;
+
+        if (message.From.Id == UserAsTheChannelId && message.SenderChat?.Id is { } senderChatId && (banUsers || useMute))
+        {
+            var chat = await client.GetChatAsync(senderChatId, cancellationToken);
+            user = $"@{chat.Username} ({chat.Id}) (channel)";
+            await client.BanChatSenderChatAsync(message.Chat.Id, senderChatId, cancellationToken: cancellationToken);
+            actionTaken = "muted";
+        }
+        else
+        {
+            if (banUsers)
             {
-                var chat = await client.GetChatAsync(senderChatId, cancellationToken);
-                user = $"@{chat.Username} ({chat.Id}) (channel)";
-                await client.BanChatSenderChatAsync(message.Chat.Id, senderChatId, cancellationToken: cancellationToken);
+                await client.BanChatMemberAsync(
+                    message.Chat.Id,
+                    message.From.Id,
+                    restrictionDuration.HasValue ? DateTime.UtcNow + restrictionDuration.Value : null,
+                    revokeMessages: false,
+                    cancellationToken);
+                actionTaken = "banned";
+            }
+            else if (useMute)
+            {
+                var permissions = new ChatPermissions
+                {
+                    CanAddWebPagePreviews = false,
+                    CanChangeInfo = false,
+                    CanInviteUsers = false,
+                    CanManageTopics = false,
+                    CanPinMessages = false,
+                    CanSendAudios = false,
+                    CanSendDocuments = false,
+                    CanSendMessages = false,
+                    CanSendOtherMessages = false,
+                    CanSendPhotos = false,
+                    CanSendPolls = false,
+                    CanSendVideoNotes = false,
+                    CanSendVideos = false,
+                    CanSendVoiceNotes = false
+                };
+
+                await client.RestrictChatMemberAsync(
+                    message.Chat.Id,
+                    userId: message.From.Id,
+                    permissions,
+                    untilDate: restrictionDuration.HasValue ? DateTime.UtcNow + restrictionDuration : null,
+                    cancellationToken: cancellationToken);
+
                 actionTaken = "muted";
             }
-            else
-            {
-                if (banUsers)
-                {
-                    await client.BanChatMemberAsync(
-                        message.Chat.Id,
-                        message.From.Id,
-                        restrictionDuration.HasValue ? DateTime.UtcNow + restrictionDuration.Value : null,
-                        revokeMessages: false,
-                        cancellationToken);
-                    actionTaken = "banned";
-                }
-                else if (useMute)
-                {
-                    var permissions = new ChatPermissions
-                    {
-                        CanAddWebPagePreviews = false,
-                        CanChangeInfo = false,
-                        CanInviteUsers = false,
-                        CanManageTopics = false,
-                        CanPinMessages = false,
-                        CanSendAudios = false,
-                        CanSendDocuments = false,
-                        CanSendMessages = false,
-                        CanSendOtherMessages = false,
-                        CanSendPhotos = false,
-                        CanSendPolls = false,
-                        CanSendVideoNotes = false,
-                        CanSendVideos = false,
-                        CanSendVoiceNotes = false
-                    };
-
-                    await client.RestrictChatMemberAsync(
-                        message.Chat.Id,
-                        userId: message.From.Id,
-                        permissions,
-                        untilDate: restrictionDuration.HasValue ? DateTime.UtcNow + restrictionDuration : null,
-                        cancellationToken: cancellationToken);
-
-                    actionTaken = "muted";
-                }
-            }
-
-            if (!silentMode)
-            {
-                if (!string.IsNullOrWhiteSpace(actionTaken))
-                {
-                    await client.SendTextMessageAsync(
-                        message.Chat.Id,
-                        $"User {user} has been {actionTaken} for {(restrictionDuration.HasValue ? $"{restrictionDuration.Value.TotalHours} hours" : "forever")}.",
-                        disableNotification: true,
-                        replyToMessageId: message.MessageId,
-                        allowSendingWithoutReply: true,
-                        cancellationToken: cancellationToken);
-                }
-            }
-
-            await Logger!.LogInformationAsync($"Deleted message from {user} and {actionTaken} the user.");
-
-                var chatId = message.Chat.Id.ToString();
-                chatId = chatId.StartsWith("-100") ? chatId["-100".Length..] : chatId;
-                await Logger.LogInformationAsync($"{actionTaken} user {user} in chat {message.Chat.Title}. Deleted message: https://t.me/c/{chatId}/{message.MessageId}");
         }
+
+        if (!silentMode)
+        {
+            if (!string.IsNullOrWhiteSpace(actionTaken))
+            {
+                await client.SendTextMessageAsync(
+                    message.Chat.Id,
+                    $"User {user} has been {actionTaken} for {(restrictionDuration.HasValue ? $"{restrictionDuration.Value.TotalHours} hours" : "forever")}.",
+                    disableNotification: true,
+                    replyToMessageId: message.MessageId,
+                    allowSendingWithoutReply: true,
+                    cancellationToken: cancellationToken);
+            }
+        }
+
+        await Logger!.LogInformationAsync($"Deleted message from {user} and {actionTaken} the user.");
+
+        var chatId = message.Chat.Id.ToString();
+        chatId = chatId.StartsWith("-100") ? chatId["-100".Length..] : chatId;
+        await Logger.LogInformationAsync($"{actionTaken} user {user} in chat {message.Chat.Title}. Deleted message: https://t.me/c/{chatId}/{message.MessageId}");
     }
 
     private async Task<bool> CheckGroupOwnership(ThrottledTelegramBotClient client, long chatId, CancellationToken cancellationToken)
@@ -575,7 +544,8 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         var isAdmin = chatMember is ChatMemberAdministrator { CanRestrictMembers: true };
         var isOwner = chatMember is ChatMemberOwner;
         var isGroupBot = chatMember.User.Id == GroupAnonymousAdminId;
-
+        var isMember = chatMember is ChatMemberMember;
+        
         if (isOwner)
         {
             return ChatMemberStatus.Creator;
@@ -586,7 +556,12 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
             return ChatMemberStatus.Administrator;
         }
 
-        return ChatMemberStatus.Member;
+        if (isMember)
+        {
+            return ChatMemberStatus.Member;
+        }
+
+        return ChatMemberStatus.Left;
     }
 
     private static string PrintApiError(ApiRequestException ex)
