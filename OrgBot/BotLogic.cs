@@ -420,6 +420,19 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
             if (status is not ChatMemberStatus.Administrator and not ChatMemberStatus.Creator and not ChatMemberStatus.Member)
             {
                 await ElaborateSpam(client, message, cancellationToken);
+
+                if (!Settings.GetGroupSettings(message.Chat.Id).SilentMode)
+                {
+                        await client.SendTextMessageAsync(
+                            message.Chat.Id,
+                            "Non-group members are not allowed to post links.",
+                            disableNotification: true,
+                            replyToMessageId: message.ReplyToMessage?.MessageId,
+                            allowSendingWithoutReply: true,
+                            cancellationToken: cancellationToken);
+                }
+
+                return;
             }
         }
 

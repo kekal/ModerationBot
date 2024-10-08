@@ -1,5 +1,6 @@
 using Moq;
 using OrgBot.TestingEntities;
+using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -376,6 +377,7 @@ public class BotLogicTests
         _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.BanUsers), true);
         _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.UseMute), false);
         _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.RestrictionDuration), TimeSpan.FromHours(1));
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.SilentMode), false);
         
         var spammer = new User { Id = 123456, FirstName = "Spammer" };
         var message = new Message
@@ -399,30 +401,33 @@ public class BotLogicTests
 
         // Assert
         _mockTelegramBotClient.Verify(c => c.DeleteMessageAsync(
-            chat.Id,
-            message.MessageId,
-            It.IsAny<CancellationToken>()), Times.Once);
+                chat.Id,
+                message.MessageId,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
 
         _mockTelegramBotClient.Verify(c => c.BanChatMemberAsync(
-            chat.Id,
-            spammer.Id,
-            It.IsAny<DateTime?>(),
-            false,
-            It.IsAny<CancellationToken>()), Times.Once);
+                chat.Id,
+                spammer.Id,
+                It.IsAny<DateTime?>(),
+                false,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
 
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
-            chat.Id,
-            It.Is<string>(s => s.Contains("has been banned")),
-            default,
-            default,
-            default,
-            default,
-            true,
-            default,
-            message.MessageId,
-            true,
-            default,
-            It.IsAny<CancellationToken>()), Times.Once);
+                chat.Id,
+                It.Is<string>(s => s.Contains("has been banned")),
+                default,
+                default,
+                default,
+                default,
+                true,
+                default,
+                message.MessageId,
+                true,
+                default,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [TestMethod]
@@ -1765,5 +1770,285 @@ public class BotLogicTests
             true,
             default,
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [TestMethod]
+    public async Task HandleUpdateAsync_NonMemberPostingLink_ShouldElaborateSpam()
+    {
+        // Arrange
+        var chat = new Chat { Id = 11001, Type = ChatType.Group };
+        var nonMemberUser = new User { Id = 222222, FirstName = "NonMember" };
+        var message = new Message
+        {
+            MessageId = 1,
+            From = nonMemberUser,
+            Chat = chat,
+            Text = "Check out this link: http://example.com",
+            Entities = [new MessageEntity { Type = MessageEntityType.Url, Offset = 21, Length = 18 }],
+            Date = DateTime.UtcNow,
+            ReplyToMessage = new Message
+            {
+                MessageId = 2,
+                From = new User { Id = BotLogic.GenericTelegramId },
+                Date = DateTime.UtcNow.AddSeconds(-5)
+            }
+        };
+        var update = new Update { Id = 1, Message = message };
+
+        _mockTelegramBotClient.Setup(c => c.GetChatMemberAsync(
+                chat.Id,
+                nonMemberUser.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatMemberLeft
+            {
+                User = nonMemberUser
+            });
+
+        var groupSettings = _botLogic.Settings.GetGroupSettings(chat.Id);
+        groupSettings.BanUsers = true;
+        groupSettings.UseMute = false;
+        groupSettings.SilentMode = false;
+
+        // Act
+        await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
+
+        // Assert
+        _mockTelegramBotClient.Verify(c => c.DeleteMessageAsync(
+            chat.Id,
+            message.MessageId,
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        _mockTelegramBotClient.Verify(c => c.BanChatMemberAsync(
+            chat.Id,
+            nonMemberUser.Id,
+            It.IsAny<DateTime?>(),
+            false,
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
+            chat.Id,
+            "Non-group members are not allowed to post links.",
+            default,
+            default,
+            default,
+            default,
+            true,
+            default,
+            message.ReplyToMessage.MessageId,
+            true,
+            default,
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [TestMethod]
+    public async Task HandleUpdateAsync_MemberPostingLink_ShouldNotElaborateSpam()
+    {
+        // Arrange
+        var chat = new Chat { Id = 11002, Type = ChatType.Group };
+        var memberUser = new User { Id = 333333, FirstName = "Member" };
+        var message = new Message
+        {
+            MessageId = 1,
+            From = memberUser,
+            Chat = chat,
+            Text = "Check out this link: http://example.com",
+            Entities = [new MessageEntity { Type = MessageEntityType.Url, Offset = 21, Length = 18 }],
+            Date = DateTime.UtcNow,
+            ReplyToMessage = new Message
+            {
+                MessageId = 2,
+                From = new User { Id = BotLogic.GenericTelegramId },
+                Date = DateTime.UtcNow.AddSeconds(-1 - _botLogic.Settings.GetGroupSettings(chat.Id).SpamTimeWindow.TotalSeconds)
+            }
+        };
+
+        var update = new Update { Id = 1, Message = message };
+
+        _mockTelegramBotClient.Setup(c => c.GetChatMemberAsync(
+                chat.Id,
+                memberUser.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatMemberMember
+            {
+                User = memberUser
+            });
+
+        var groupSettings = _botLogic.Settings.GetGroupSettings(chat.Id);
+        groupSettings.BanUsers = true;
+        groupSettings.UseMute = false;
+        groupSettings.SilentMode = false;
+
+        // Act
+        await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
+
+        // Assert
+        _mockTelegramBotClient.Verify(c => c.DeleteMessageAsync(
+                It.IsAny<ChatId>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        _mockTelegramBotClient.Verify(c => c.BanChatMemberAsync(
+                It.IsAny<ChatId>(),
+                It.IsAny<long>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
+            It.IsAny<ChatId>(),
+            It.IsAny<string>(),
+            It.IsAny<int>(),
+            It.IsAny<ParseMode>(),
+            It.IsAny<IEnumerable<MessageEntity>>(),
+            It.IsAny<bool>(),
+            It.IsAny<bool>(),
+            It.IsAny<bool>(),
+            It.IsAny<int>(),
+            It.IsAny<bool>(),
+            It.IsAny<IReplyMarkup>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [TestMethod]
+    public async Task HandleUpdateAsync_NonMemberPostingLink_WithSilentMode_ShouldNotSendWarning()
+    {
+        // Arrange
+        var chat = new Chat { Id = 11003, Type = ChatType.Group };
+        var nonMemberUser = new User { Id = 444444, FirstName = "NonMember" };
+        var message = new Message
+        {
+            MessageId = 1,
+            From = nonMemberUser,
+            Chat = chat,
+            Text = "Visit my website: http://spam.com",
+            Entities = [new MessageEntity { Type = MessageEntityType.Url, Offset = 18, Length = 16 }],
+            Date = DateTime.UtcNow,
+            ReplyToMessage = new Message
+            {
+                MessageId = 2,
+                From = new User { Id = BotLogic.GenericTelegramId },
+                Date = DateTime.UtcNow.AddSeconds(-5)
+            }
+        };
+        var update = new Update { Id = 1, Message = message };
+
+        _mockTelegramBotClient.Setup(c => c.GetChatMemberAsync(
+                chat.Id,
+                nonMemberUser.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatMemberLeft
+            {
+                User = nonMemberUser
+            });
+
+        var groupSettings = _botLogic.Settings.GetGroupSettings(chat.Id);
+        groupSettings.BanUsers = true;
+        groupSettings.UseMute = false;
+        groupSettings.SilentMode = true; // SilentMode is on
+
+        // Act
+        await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
+
+        // Assert
+        _mockTelegramBotClient.Verify(c => c.DeleteMessageAsync(
+                chat.Id,
+                message.MessageId,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _mockTelegramBotClient.Verify(c => c.BanChatMemberAsync(
+                chat.Id,
+                nonMemberUser.Id,
+                It.IsAny<DateTime?>(),
+                false,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
+                It.IsAny<ChatId>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<ParseMode>(),
+                It.IsAny<IEnumerable<MessageEntity>>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>(),
+                It.IsAny<int>(),
+                It.IsAny<bool>(),
+                It.IsAny<IReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+
+    [TestMethod]
+    public async Task HandleUpdateAsync_NonMemberPostingSpam_ShouldDeleteAndBanUser()
+    {
+        // Arrange
+        var chat = new Chat { Id = 77007, Type = ChatType.Group };
+
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.BanUsers), true);
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.UseMute), false);
+        _botLogic.Settings.SetGroupSettings(chat.Id, nameof(GroupSettings.SilentMode), false);
+
+        var spammer = new User { Id = 123456, FirstName = "Spammer" };
+        var message = new Message
+        {
+            MessageId = 1,
+            From = spammer,
+            Chat = chat,
+            Text = "Spam message",
+            Date = DateTime.UtcNow,
+            ReplyToMessage = new Message
+            {
+                MessageId = 2,
+                From = new User { Id = BotLogic.GenericTelegramId },
+                Date = DateTime.UtcNow.AddSeconds(-5)
+            }
+        };
+        var update = new Update { Id = 1, Message = message };
+
+        _mockTelegramBotClient.Setup(c => c.GetChatMemberAsync(
+                chat.Id,
+                spammer.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatMemberLeft
+            {
+                User = spammer
+            });
+
+        // Act
+        await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
+
+        // Assert
+        _mockTelegramBotClient.Verify(c => c.DeleteMessageAsync(
+            chat.Id,
+            message.MessageId,
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        _mockTelegramBotClient.Verify(c => c.BanChatMemberAsync(
+            chat.Id,
+            spammer.Id,
+            It.IsAny<DateTime?>(),
+            false,
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
+                chat.Id,
+                It.Is<string>(s => s.Contains("has been banned")),
+                default,
+                default,
+                default,
+                default,
+                true,
+                default,
+                message.MessageId,
+                true,
+                default,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 }

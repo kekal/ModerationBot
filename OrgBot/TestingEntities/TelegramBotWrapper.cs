@@ -8,6 +8,7 @@ using Telegram.Bot.Types.ReplyMarkups;
 
 namespace OrgBot.TestingEntities;
 
+/// <inheritdoc cref="TelegramBotClient"/>>
 public class TelegramBotWrapper(string botToken) : IMyTelegramBotClient
 {
     public bool LocalBotServer => _client.LocalBotServer;
@@ -38,6 +39,7 @@ public class TelegramBotWrapper(string botToken) : IMyTelegramBotClient
         remove => _client.OnApiResponseReceived -= value;
     }
 
+    /// <inheritdoc cref="TelegramBotClient"/>>
     private readonly TelegramBotClient _client = new(botToken)
     {
         Timeout = TimeSpan.FromSeconds(60)
@@ -68,9 +70,7 @@ public class TelegramBotWrapper(string botToken) : IMyTelegramBotClient
         await _client.SetMyCommandsAsync(commands, scope, languageCode, cancellationToken);
     }
 
-    public async Task<Message> SendContactAsync(ChatId chatId, string phoneNumber, string firstName, int? messageThreadId = default, string? lastName = default, string? vCard = default,
-        bool? disableNotification = default, bool? protectContent = default, int? replyToMessageId = default, bool? allowSendingWithoutReply = default,
-        IReplyMarkup? replyMarkup = default, CancellationToken cancellationToken = default)
+    public async Task<Message> SendContactAsync(ChatId chatId, string phoneNumber, string firstName, int? messageThreadId = default, string? lastName = default, string? vCard = default, bool? disableNotification = default, bool? protectContent = default, int? replyToMessageId = default, bool? allowSendingWithoutReply = default, IReplyMarkup? replyMarkup = default, CancellationToken cancellationToken = default)
     {
         return await _client.SendContactAsync(chatId, phoneNumber, firstName, messageThreadId, lastName, vCard, disableNotification, protectContent, replyToMessageId, allowSendingWithoutReply, replyMarkup, cancellationToken);
     }
@@ -95,8 +95,7 @@ public class TelegramBotWrapper(string botToken) : IMyTelegramBotClient
         await _client.BanChatMemberAsync(chatId, userId, untilDate, revokeMessages, cancellationToken);
     }
 
-    public async Task RestrictChatMemberAsync(ChatId chatId, long userId, ChatPermissions permissions, bool? useIndependentChatPermissions = default, DateTime? untilDate = default,
-        CancellationToken cancellationToken = default)
+    public async Task RestrictChatMemberAsync(ChatId chatId, long userId, ChatPermissions permissions, bool? useIndependentChatPermissions = default, DateTime? untilDate = default, CancellationToken cancellationToken = default)
     {
         await _client.RestrictChatMemberAsync(chatId, userId, permissions, useIndependentChatPermissions, untilDate, cancellationToken);
     }
@@ -116,9 +115,7 @@ public class TelegramBotWrapper(string botToken) : IMyTelegramBotClient
         return await _client.GetUpdatesAsync(offset, limit, timeout, allowedUpdates, cancellationToken);
     }
 
-    public async Task<Message> SendTextMessageAsync(ChatId chatId, string text, int? messageThreadId = default, ParseMode? parseMode = default, IEnumerable<MessageEntity>? entities = default,
-        bool? disableWebPagePreview = default, bool? disableNotification = default, bool? protectContent = default, int? replyToMessageId = default,
-        bool? allowSendingWithoutReply = default, IReplyMarkup? replyMarkup = default, CancellationToken cancellationToken = default)
+    public async Task<Message> SendTextMessageAsync(ChatId chatId, string text, int? messageThreadId = default, ParseMode? parseMode = default, IEnumerable<MessageEntity>? entities = default, bool? disableWebPagePreview = default, bool? disableNotification = default, bool? protectContent = default, int? replyToMessageId = default, bool? allowSendingWithoutReply = default, IReplyMarkup? replyMarkup = default, CancellationToken cancellationToken = default)
     {
         return await _client.SendTextMessageAsync(chatId, text, messageThreadId, parseMode, entities, disableWebPagePreview, disableNotification, protectContent, replyToMessageId, allowSendingWithoutReply, replyMarkup, cancellationToken);
     }
