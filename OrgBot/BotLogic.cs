@@ -1,15 +1,16 @@
-﻿using OrgBot.TestingEntities;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using System.Text;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using TTBC = ThrottledTelegramBotClient;
+using TTBCT = ThrottledTelegramBotClient.TestingEntities;
 
 [assembly: InternalsVisibleTo("OrgBot.Tests")]
 
 namespace OrgBot;
 
-public class BotLogic(string botToken, long? ownerId, IApplicationLifetime applicationLifetime)
+public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime applicationLifetime)
 {
     internal const int GroupAnonymousAdminId = 1087968824;
     internal const int GenericTelegramId = 777000;
@@ -26,7 +27,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
     {
         SetupLogger();
 
-        ThrottledTelegramBotClient? client = null;
+        TTBC.ThrottledTelegramBotClient? client = null;
 
         try
         {
@@ -37,7 +38,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
             }
 
             
-            using (client = new ThrottledTelegramBotClient(new TelegramBotWrapper(botToken), TimeSpan.FromSeconds(ThrottlingTimeout)))
+            using (client = new TTBC.ThrottledTelegramBotClient(new TTBCT.TelegramBotWrapper(botToken), TimeSpan.FromSeconds(ThrottlingTimeout)))
             {
                 await SetCommandsAsync(client);
 
@@ -103,7 +104,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         }
     }
 
-    private async Task LastChanceNotification(ThrottledTelegramBotClient? client, string text)
+    private async Task LastChanceNotification(TTBC.ThrottledTelegramBotClient? client, string text)
     {
         try
         {
@@ -129,7 +130,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         }
     }
 
-    internal async Task SetCommandsAsync(ThrottledTelegramBotClient client)
+    internal async Task SetCommandsAsync(TTBC.ThrottledTelegramBotClient client)
     {
         var logSize = Settings.LogSize;
 
@@ -159,7 +160,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         await client.SetMyCommandsAsync(privateCommands, new BotCommandScopeAllPrivateChats());
     }
 
-    internal async Task HandleUpdateAsync(ThrottledTelegramBotClient client, Update update, CancellationToken cancellationToken)
+    internal async Task HandleUpdateAsync(TTBC.ThrottledTelegramBotClient client, Update update, CancellationToken cancellationToken)
     {
         try
         {
@@ -203,7 +204,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         }
     }
 
-    private async Task ProcessPrivateMessageAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    private async Task ProcessPrivateMessageAsync(TTBC.ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
         if (ownerId.HasValue && message.From?.Id != ownerId)
         {
@@ -222,7 +223,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         }
     }
 
-    private async Task ProcessPrivateCommandAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    private async Task ProcessPrivateCommandAsync(TTBC.ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
         var commandEntity = message.Entities!.First(e => e.Type == MessageEntityType.BotCommand);
         var commandText = message.Text!.Substring(commandEntity.Offset, commandEntity.Length);
@@ -279,7 +280,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         }
     }
 
-    private async Task ProcessGroupMessageAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    private async Task ProcessGroupMessageAsync(TTBC.ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
         if (message.Entities?.Any(e => e.Type == MessageEntityType.BotCommand) == true)
         {
@@ -291,7 +292,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         }
     }
 
-    private async Task ProcessGroupCommandAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    private async Task ProcessGroupCommandAsync(TTBC.ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
         if (message.Chat.Type != ChatType.Group && message.Chat.Type != ChatType.Supergroup || message.From == null)
         {
@@ -399,7 +400,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         }
     }
 
-    private async Task HandleSpamAsync(ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    private async Task HandleSpamAsync(TTBC.ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
     {
         var spamTimeWindow = Settings.GetGroupSettings(message.Chat.Id).SpamTimeWindow;
         var engaged = Settings.Engaged;
@@ -442,7 +443,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         }
     }
 
-    private async Task ElaborateSpam(ThrottledTelegramBotClient client, Message  message, CancellationToken cancellationToken)
+    private async Task ElaborateSpam(TTBC.ThrottledTelegramBotClient client, Message  message, CancellationToken cancellationToken)
     {
         var restrictionDuration = Settings.GetGroupSettings(message.Chat.Id).RestrictionDuration;
         var banUsers = Settings.GetGroupSettings(message.Chat.Id).BanUsers;
@@ -526,7 +527,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         await Logger.LogInformationAsync($"{actionTaken} user {user} in chat {message.Chat.Title}. Deleted message: https://t.me/c/{chatId}/{message.MessageId}");
     }
 
-    private async Task<bool> CheckGroupOwnership(ThrottledTelegramBotClient client, long chatId, CancellationToken cancellationToken)
+    private async Task<bool> CheckGroupOwnership(TTBC.ThrottledTelegramBotClient client, long chatId, CancellationToken cancellationToken)
     {
         if (ownerId.HasValue)
         {
@@ -551,7 +552,7 @@ public class BotLogic(string botToken, long? ownerId, IApplicationLifetime appli
         return true;
     }
 
-    private async Task<ChatMemberStatus> GetChatMemberStatus(ThrottledTelegramBotClient client, Chat chat, long userId, CancellationToken cancellationToken)
+    private async Task<ChatMemberStatus> GetChatMemberStatus(TTBC.ThrottledTelegramBotClient client, Chat chat, long userId, CancellationToken cancellationToken)
     {
         var chatMember = await client.GetChatMemberAsync(chat.Id, userId, cancellationToken);
         var isAdmin = chatMember is ChatMemberAdministrator { CanRestrictMembers: true };

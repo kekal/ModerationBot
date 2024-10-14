@@ -30,7 +30,6 @@ clean_container() {
 }
 
 build_and_run() {
-    cd OrgBot
 
     clean_container
 
@@ -57,8 +56,6 @@ build_and_run() {
 
     sleep 10
     docker container logs telegram_bot_container
-
-    cd ..
 }
 
 fetch_updates() {
@@ -67,6 +64,8 @@ fetch_updates() {
     git fetch origin
     git reset --hard origin/master
     git clean -df
+    git submodule init
+    git submodule update --recursive --remote
 
     chmod +x install.sh
 }

@@ -1,11 +1,10 @@
 using Moq;
-using OrgBot.TestingEntities;
-using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using File = System.IO.File;
+using TTCBT = ThrottledTelegramBotClient.TestingEntities;
 
 namespace OrgBot.Tests;
 
@@ -13,9 +12,9 @@ namespace OrgBot.Tests;
 public class BotLogicTests
 {
     private BotLogic _botLogic = null!;
-    private Mock<IMyTelegramBotClient> _mockTelegramBotClient = null!;
-    private Mock<IApplicationLifetime> _mockApplicationLifetime = null!;
-    private ThrottledTelegramBotClient _throttledClient = null!;
+    private Mock<TTCBT.IMyTelegramBotClient> _mockTelegramBotClient = null!;
+    private Mock<TTCBT.IApplicationLifetime> _mockApplicationLifetime = null!;
+    private ThrottledTelegramBotClient.ThrottledTelegramBotClient _throttledClient = null!;
     private const long OwnerId = 123456789;
     private const string BotToken = "test_bot_token";
     private const string TestSettingsFilePath = "test_botsettings.json";
@@ -30,9 +29,9 @@ public class BotLogicTests
             File.Delete(TestSettingsFilePath);
         }
 
-        _mockTelegramBotClient = new Mock<IMyTelegramBotClient>();
-        _throttledClient = new ThrottledTelegramBotClient(_mockTelegramBotClient.Object, TimeSpan.FromMilliseconds(100));
-        _mockApplicationLifetime = new Mock<IApplicationLifetime>();
+        _mockTelegramBotClient = new Mock<TTCBT.IMyTelegramBotClient>();
+        _throttledClient = new ThrottledTelegramBotClient.ThrottledTelegramBotClient(_mockTelegramBotClient.Object, TimeSpan.FromMilliseconds(100));
+        _mockApplicationLifetime = new Mock<TTCBT.IApplicationLifetime>();
         _botLogic = new BotLogic(BotToken, OwnerId, _mockApplicationLifetime.Object);
 
 

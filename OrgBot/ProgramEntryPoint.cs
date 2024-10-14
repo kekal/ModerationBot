@@ -1,4 +1,4 @@
-﻿using OrgBot.TestingEntities;
+﻿using ApplicationLifetime = ThrottledTelegramBotClient.TestingEntities.ApplicationLifetime;
 
 namespace OrgBot;
 

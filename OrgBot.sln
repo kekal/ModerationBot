@@ -13,6 +13,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "OrgBot.Tests", "Tests\OrgBot.Tests.csproj", "{F2B31CD0-F2E6-4D06-97EA-D7A10C8EDD01}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThrottledTelegramBotClient", "ThrottledTelegramBot\ThrottledTelegramBotClient\ThrottledTelegramBotClient.csproj", "{9E87D0F0-2581-4272-AE9D-0677CEA02A03}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThrottledTelegramBotClient.Tests", "ThrottledTelegramBot\ThrottledTelegramBotClientTests\ThrottledTelegramBotClient.Tests.csproj", "{0E8C838F-44E5-46AC-9E7D-FD2D496518D6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +31,14 @@ Global
 		{F2B31CD0-F2E6-4D06-97EA-D7A10C8EDD01}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F2B31CD0-F2E6-4D06-97EA-D7A10C8EDD01}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F2B31CD0-F2E6-4D06-97EA-D7A10C8EDD01}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9E87D0F0-2581-4272-AE9D-0677CEA02A03}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9E87D0F0-2581-4272-AE9D-0677CEA02A03}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9E87D0F0-2581-4272-AE9D-0677CEA02A03}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9E87D0F0-2581-4272-AE9D-0677CEA02A03}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0E8C838F-44E5-46AC-9E7D-FD2D496518D6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0E8C838F-44E5-46AC-9E7D-FD2D496518D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0E8C838F-44E5-46AC-9E7D-FD2D496518D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0E8C838F-44E5-46AC-9E7D-FD2D496518D6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

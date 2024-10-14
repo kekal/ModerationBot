@@ -1,0 +1,4 @@
+[submodule "ThrottledTelegramBot"]
+	path = ThrottledTelegramBot
+	url = https://github.com/kekal/Throttled-Telegram-Bot-Client.git
+	branch = master
