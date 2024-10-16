@@ -13,7 +13,7 @@ public class BotSettings
     static BotSettings()
     {
         var settingsPath = Environment.GetEnvironmentVariable("SETTINGS_PATH");
-        SettingsFilePath = !string.IsNullOrWhiteSpace(settingsPath) ? settingsPath : "botsettings.json";
+        SettingsFilePath = !string.IsNullOrWhiteSpace(settingsPath) ? settingsPath : Path.Combine(".", "data", @"botsettings.json");
     }
 
     private bool _engaged = true;

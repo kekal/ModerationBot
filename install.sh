@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $@"
@@ -24,9 +24,9 @@ log "BOT_TOKEN: [REDACTED]"
 log "OWNER: $OWNER"
 
 clean_container() {
-    docker stop telegram_bot_container || true
-    docker rm telegram_bot_container || true
-    docker image rm telegram_bot_image || true
+    docker stop telegram_bot_container 2>/dev/null || true  
+    docker rm telegram_bot_container 2>/dev/null  || true
+    docker image rm telegram_bot_image 2>/dev/null  || true 
 }
 
 build_and_run() {
@@ -41,9 +41,9 @@ build_and_run() {
     fi
 
     docker run -d --name telegram_bot_container \
-        -v $(pwd):/app/data \
-        -e BOT_TOKEN="$BOT_TOKEN" \
-        -e OWNER="$OWNER" \
+        -v "$(pwd)/data:/app/data" \
+        -e BOT_TOKEN=$BOT_TOKEN \
+        -e OWNER=$OWNER \
         telegram_bot_image
 
     if [ $? -ne 0 ]; then
@@ -59,7 +59,7 @@ build_and_run() {
 }
 
 fetch_updates() {
-    git init
+    git init 2>/dev/null || true
     git remote add origin https://github.com/kekal/ModerationBot || true
     git fetch origin
     git reset --hard origin/master
@@ -71,6 +71,15 @@ fetch_updates() {
 }
 
 # Main
+
+if [[ -z "$GIT_UPDATED" ]]; then
+    fetch_updates
+
+    export GIT_UPDATED=1
+
+    exec "$0" "$@"
+fi
+
 
 clean_container
 

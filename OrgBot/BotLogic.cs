@@ -98,7 +98,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
             await LastChanceNotification(client, error);
             await Logger!.LogErrorAsync(error);
 
-            await Task.Delay(TimeSpan.FromMinutes(5));
+            await Task.Delay(TimeSpan.FromMinutes(1));
 
             applicationLifetime.Exit(2);
         }
