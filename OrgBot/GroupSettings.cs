@@ -4,6 +4,8 @@ namespace OrgBot;
 
 public class GroupSettings
 {
+    internal bool CleanNonGroupUrl { get; set; }
+    
     public bool BanUsers { get; set; }
 
     public TimeSpan SpamTimeWindow { get; init; } = TimeSpan.FromSeconds(10);

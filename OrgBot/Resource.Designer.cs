@@ -97,6 +97,24 @@ namespace OrgBot {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Cleaning messages from non-group members..
+        /// </summary>
+        internal static string Clean_non_group_url {
+            get {
+                return ResourceManager.GetString("Clean_non_group_url", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Cleaning messages from non-group members is now {0}..
+        /// </summary>
+        internal static string Clean_non_group_url_mode {
+            get {
+                return ResourceManager.GetString("Clean_non_group_url_mode", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Disable any restricting users when deleting spam.
         /// </summary>
         internal static string Disable_any_restricting {

@@ -140,6 +140,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
             new BotCommand { Command = "throttle_user", Description = Resource.throttled_user },
             new BotCommand { Command = "free_user", Description = Resource.free_user },
             new BotCommand { Command = "no_restrict", Description = Resource.Disable_any_restricting },
+            new BotCommand { Command = "clean_non_group_url_messages", Description = Resource.Clean_non_group_url },
             new BotCommand { Command = "mute", Description = Resource.Enable_muting },
             new BotCommand { Command = "set_spam_time", Description = Resource.Set_the_spam_time },
             new BotCommand { Command = "set_restriction_time", Description = Resource.Set_the_restriction_duration },
@@ -319,6 +320,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                 case "/ban":
                     Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), true);
                     Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), false);
+                    await Logger.LogInformationAsync(Resource.users_will_be_banned);
 
                     await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_be_banned, cancellationToken: cancellationToken);
                     break;
@@ -327,7 +329,22 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                     Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), false);
                     Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), false);
 
+                    await Logger.LogInformationAsync(Resource.users_will_not_be_restricted);
                     await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_not_be_restricted, cancellationToken: cancellationToken);
+                    break;
+
+                case "/clean_non_group_url_messages":
+                    bool cleanNonGroupUrl;
+                    lock (Settings)
+                    {
+                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.CleanNonGroupUrl), !Settings.GetGroupSettings(message.Chat.Id).CleanNonGroupUrl);
+                        cleanNonGroupUrl = Settings.GetGroupSettings(message.Chat.Id).CleanNonGroupUrl;
+                    }
+
+                    var clean = string.Format(Resource.Clean_non_group_url_mode, cleanNonGroupUrl ? "enabled" : "disabled");
+
+                    await Logger.LogInformationAsync(clean);
+                    await client.SendTextMessageAsync(message.Chat.Id, clean, cancellationToken: cancellationToken);
                     break;
 
                 case "/throttle_user":
@@ -438,6 +455,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                         $"/throttle_user - {Resource.throttled_user}{Environment.NewLine}" +
                         $"/free_user - {Resource.free_user}{Environment.NewLine}" +
                         $"/no_restrict - {Resource.Disable_any_restricting}{Environment.NewLine}" +
+                        $"/clean_non_group_url_messages - {Resource.Clean_non_group_url}{Environment.NewLine}" +
                         $"/mute - {Resource.Enable_muting}{Environment.NewLine}" +
                         $"/set_spam_time <seconds> - {Resource.Set_the_spam_time}{Environment.NewLine}" +
                         $"/set_restriction_time <minutes or 0> - {Resource.Set_the_restriction_duration}{Environment.NewLine}" +
@@ -479,7 +497,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
             return;
         }
 
-        if (message.Entities?.Any(e => e.Type is MessageEntityType.Url or MessageEntityType.TextLink) is true)
+        if (Settings.GetGroupSettings(message.Chat.Id).CleanNonGroupUrl && message.Entities?.Any(e => e.Type is MessageEntityType.Url or MessageEntityType.TextLink) is true)
         {
             var status = await GetChatMemberStatus(client, message.Chat, message.From.Id, cancellationToken);
             if (status is not ChatMemberStatus.Administrator and not ChatMemberStatus.Creator and not ChatMemberStatus.Member)

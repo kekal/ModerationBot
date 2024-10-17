@@ -222,4 +222,10 @@
   <data name="Welcome" xml:space="preserve">
     <value> Bot service has been started</value>
   </data>
+  <data name="Clean_non_group_url_mode" xml:space="preserve">
+	  <value>Cleaning messages from non-group members is now {0}.</value>
+  </data>
+  <data name="Clean_non_group_url" xml:space="preserve">
+	  <value>Cleaning messages from non-group members.</value>
+  </data>
 </root>
