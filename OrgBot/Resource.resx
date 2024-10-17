@@ -223,9 +223,24 @@
     <value> Bot service has been started</value>
   </data>
   <data name="Clean_non_group_url_mode" xml:space="preserve">
-	  <value>Cleaning messages from non-group members is now {0}.</value>
+    <value>Cleaning messages from non-group members is now {0}.</value>
   </data>
   <data name="Clean_non_group_url" xml:space="preserve">
-	  <value>Cleaning messages from non-group members.</value>
+    <value>Cleaning messages from non-group members.</value>
+  </data>
+  <data name="Invalid time specified" xml:space="preserve">
+    <value>Invalid time specified. Please provide a positive integer in seconds &lt;= {0}.</value>
+  </data>
+  <data name="Spam time window set" xml:space="preserve">
+    <value>Spam time window set to {0} seconds.</value>
+  </data>
+  <data name="Error while unbanning" xml:space="preserve">
+    <value>Error while unbanning: {0}</value>
+  </data>
+  <data name="Failed to handle message" xml:space="preserve">
+    <value>Failed to handle message: {0}</value>
+  </data>
+  <data name="Show this help message" xml:space="preserve">
+    <value>Show this help message</value>
   </data>
 </root>

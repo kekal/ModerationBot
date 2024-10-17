@@ -142,6 +142,24 @@ namespace OrgBot {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Error while unbanning: {0}.
+        /// </summary>
+        internal static string Error_while_unbanning {
+            get {
+                return ResourceManager.GetString("Error while unbanning", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to handle message: {0}.
+        /// </summary>
+        internal static string Failed_to_handle_message {
+            get {
+                return ResourceManager.GetString("Failed to handle message", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to User will not be throttled..
         /// </summary>
         internal static string free_user {
@@ -156,6 +174,15 @@ namespace OrgBot {
         internal static string Invalid_restriction_duration {
             get {
                 return ResourceManager.GetString("Invalid restriction duration", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid time specified. Please provide a positive integer in seconds &lt;= {0}..
+        /// </summary>
+        internal static string Invalid_time_specified {
+            get {
+                return ResourceManager.GetString("Invalid time specified", resourceCulture);
             }
         }
         
@@ -268,6 +295,15 @@ namespace OrgBot {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Show this help message.
+        /// </summary>
+        internal static string Show_this_help_message {
+            get {
+                return ResourceManager.GetString("Show this help message", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Show available commands.
         /// </summary>
         internal static string ShowHelp {
@@ -295,11 +331,11 @@ namespace OrgBot {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to User {0} will be throttled with {1} seconds pause..
+        ///   Looks up a localized string similar to Spam time window set to {0} seconds..
         /// </summary>
-        internal static string throttle_notify {
+        internal static string Spam_time_window_set {
             get {
-                return ResourceManager.GetString("throttle_notify", resourceCulture);
+                return ResourceManager.GetString("Spam time window set", resourceCulture);
             }
         }
         
@@ -318,6 +354,15 @@ namespace OrgBot {
         internal static string Stop {
             get {
                 return ResourceManager.GetString("Stop", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to User {0} will be throttled with {1} seconds pause..
+        /// </summary>
+        internal static string throttle_notify {
+            get {
+                return ResourceManager.GetString("throttle_notify", resourceCulture);
             }
         }
         
