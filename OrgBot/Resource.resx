@@ -159,8 +159,8 @@
   <data name="non-command error" xml:space="preserve">
     <value>Please use commands to interact with the bot. Use /help to see available commands.</value>
   </data>
-  <data name="Silent mode enabled" xml:space="preserve">
-    <value>Silent mode is now enabled.</value>
+  <data name="throttle_notify" xml:space="preserve">
+    <value>User {0} will be throttled with {1} seconds pause.</value>
   </data>
   <data name="Silent mode" xml:space="preserve">
     <value>Silent mode is now {0}.</value>
@@ -202,24 +202,24 @@
     <value>Restriction duration set to forever.</value>
   </data>
   <data name="API rate limit exceeded" xml:space="preserve">
-	  <value>API rate limit exceeded. Retrying after {0} seconds.</value>
+    <value>API rate limit exceeded. Retrying after {0} seconds.</value>
   </data>
   <data name="Too many requests" xml:space="preserve">
-	  <value>Too many requests: {0} seconds to wait.</value>
+    <value>Too many requests: {0} seconds to wait.</value>
   </data>
   <data name="throttled_user" xml:space="preserve">
-	  <value>Force the user to make a specified pause between messages.</value>
+    <value>Force the user to make a specified pause between messages.</value>
   </data>
   <data name="free_user" xml:space="preserve">
-	  <value>User will not be throttled.</value>
+    <value>User will not be throttled.</value>
   </data>
   <data name="join_disable" xml:space="preserve">
-	  <value>Join/left messages will be {0}</value>
+    <value>Join/left messages will be {0}</value>
   </data>
   <data name="joining_description" xml:space="preserve">
-	  <value>Switch Join/Left messages</value>
+    <value>Switch Join/Left messages</value>
   </data>
   <data name="Welcome" xml:space="preserve">
-	  <value> Bot service has been started</value>
+    <value> Bot service has been started</value>
   </data>
 </root>

@@ -19,7 +19,7 @@ public class BotSettings
     }
 
     private bool _engaged = true;
-    private uint _logSize = 30;
+    private uint _logSize = 200;
     private static JsonSerializerOptions _jsonSerializerOptions = new() { WriteIndented = true };
 
     public ConcurrentDictionary<long, GroupSettings> GroupSettings { get; init; } = [];

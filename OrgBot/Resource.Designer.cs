@@ -277,11 +277,11 @@ namespace OrgBot {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Silent mode is now enabled..
+        ///   Looks up a localized string similar to User {0} will be throttled with {1} seconds pause..
         /// </summary>
-        internal static string Silent_mode_enabled {
+        internal static string throttle_notify {
             get {
-                return ResourceManager.GetString("Silent mode enabled", resourceCulture);
+                return ResourceManager.GetString("throttle_notify", resourceCulture);
             }
         }
         

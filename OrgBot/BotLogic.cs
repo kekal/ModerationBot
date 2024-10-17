@@ -19,7 +19,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
     private const double ThrottlingTimeout = 1;
     internal readonly BotSettings Settings = BotSettings.Load();
     internal readonly List<string> ActionLog = [];
-    private TelegramLogger? Logger { get; set; }
+    private TelegramLogger Logger { get; set; } = null!;
     private readonly CancellationTokenSource _cts = new();
 
 
@@ -343,7 +343,9 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                             }
 
                             Settings.SetUserState(message.Chat.Id, userId, sec, permissions ?? new ChatPermissions());
-                            await client.SendTextMessageAsync(message.Chat.Id, $"User {userId} will be throttled.", cancellationToken: cancellationToken);
+                            await Logger.LogInformationAsync(string.Format(Resource.throttle_notify, userId, sec));
+
+                            await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.throttle_notify, userId, sec), cancellationToken: cancellationToken);
                         }
                     }
                     else
@@ -359,6 +361,8 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                     {
                         var state = Settings.GetUserState(message.Chat.Id, userId2);
                         Settings.SetUserState(message.Chat.Id, userId2, 0, state.DefaultPermissions);
+                        await Logger.LogInformationAsync($"User {userId2} will not be throttled.");
+
                         await client.SendTextMessageAsync(message.Chat.Id, $"User {userId2} will not be throttled.", cancellationToken: cancellationToken);
                     }
 
@@ -527,7 +531,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
             if (message.From.Id == UserAsTheChannelId && message.SenderChat?.Id is { } senderChatId)
             {
                 await client.BanChatSenderChatAsync(message.Chat.Id, senderChatId, cancellationToken: cancellationToken);
-
+                
                 _ = Task.Run(async () =>
                 {
                     try
@@ -537,7 +541,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                     }
                     catch (Exception ex)
                     {
-                        await Logger!.LogInformationAsync($"Error while unbanning: {ex.Message}");
+                        await Logger.LogErrorAsync($"Error while unbanning: {ex.Message}");
                     }
                 }, cancellationToken);
 
@@ -623,11 +627,12 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
             }
         }
 
-        await Logger!.LogInformationAsync($"Deleted message from {user} and {actionTaken} the user.");
-
         var chatId = message.Chat.Id.ToString();
         chatId = chatId.StartsWith("-100") ? chatId["-100".Length..] : chatId;
-        await Logger.LogInformationAsync($"{actionTaken} user {user} in chat {message.Chat.Title}. Deleted message: https://t.me/c/{chatId}/{message.MessageId}");
+
+        var link = message.ReplyToMessage?.MessageId is not null ? $"replay to https://t.me/c/{chatId}/{message.ReplyToMessage?.MessageId}" : $"https://t.me/c/{chatId}/{message.MessageId}";
+
+        await Logger.LogInformationAsync($"{actionTaken} user {user} in chat {message.Chat.Title}. Deleted {link} | >> {message.Text}");
     }
 
     private static async Task MuteUser(TTBC.ThrottledTelegramBotClient client, Message message, TimeSpan? restrictionDuration, CancellationToken cancellationToken)
