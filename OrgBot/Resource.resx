@@ -172,7 +172,7 @@
     <value>This chat does not belong to bot owner.</value>
   </data>
   <data name="shutting down" xml:space="preserve">
-    <value>Bot is shutting down.</value>
+    <value>Bot service has been stopped.</value>
   </data>
   <data name="users will be banned" xml:space="preserve">
     <value>Spamming users will be banned.</value>
@@ -206,5 +206,20 @@
   </data>
   <data name="Too many requests" xml:space="preserve">
 	  <value>Too many requests: {0} seconds to wait.</value>
+  </data>
+  <data name="throttled_user" xml:space="preserve">
+	  <value>Force the user to make a specified pause between messages.</value>
+  </data>
+  <data name="free_user" xml:space="preserve">
+	  <value>User will not be throttled.</value>
+  </data>
+  <data name="join_disable" xml:space="preserve">
+	  <value>Join/left messages will be {0}</value>
+  </data>
+  <data name="joining_description" xml:space="preserve">
+	  <value>Switch Join/Left messages</value>
+  </data>
+  <data name="Welcome" xml:space="preserve">
+	  <value> Bot service has been started</value>
   </data>
 </root>

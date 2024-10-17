@@ -1,6 +1,8 @@
 ﻿using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Telegram.Bot.Types;
+using File = System.IO.File;
 
 [assembly: InternalsVisibleTo("OrgBot.BotSettingsTests")]
 
@@ -18,6 +20,7 @@ public class BotSettings
 
     private bool _engaged = true;
     private uint _logSize = 30;
+    private static JsonSerializerOptions _jsonSerializerOptions = new() { WriteIndented = true };
 
     public ConcurrentDictionary<long, GroupSettings> GroupSettings { get; init; } = [];
 
@@ -37,6 +40,34 @@ public class BotSettings
         set
         {
             _logSize = value;
+            Save();
+        }
+    }
+
+    public UserState GetUserState(long groupId, long? userId)
+    {
+        lock (this)
+        {
+            if (userId is { } id && GetGroupSettings(groupId).ThrottledUsers.TryGetValue(id, out var user))
+            {
+                return user;
+            }
+
+            return new UserState();
+        }
+    }
+
+    public void SetUserState(long groupId, long userId, ulong time, ChatPermissions permissions)
+    {
+        lock (this)
+        {
+            GetGroupSettings(groupId).ThrottledUsers[userId] = new UserState
+            {
+                Id = userId,
+                DefaultPermissions = permissions,
+                ThrottleTime = time
+            };
+
             Save();
         }
     }
@@ -86,7 +117,7 @@ public class BotSettings
     {
         lock (this)
         {
-            var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+            var json = JsonSerializer.Serialize(this, _jsonSerializerOptions);
             File.WriteAllText(SettingsFilePath, json);
         }
     }
@@ -98,7 +129,25 @@ public class BotSettings
             if (File.Exists(SettingsFilePath))
             {
                 var json = File.ReadAllText(SettingsFilePath);
-                return JsonSerializer.Deserialize<BotSettings>(json) ?? new BotSettings();
+                try
+                {
+                    if (JsonSerializer.Deserialize<BotSettings>(json) is { } settings)
+                    {
+                        return settings;
+                    }
+                }
+                catch (JsonException)
+                {
+                    Console.Error.WriteLine("Settings corrupted and will be reset.");
+                    try
+                    {
+                        File.Delete(SettingsFilePath);
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
+                }
             }
 
             return new BotSettings();

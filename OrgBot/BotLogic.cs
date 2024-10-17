@@ -47,7 +47,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
 
                 if (ownerId != null)
                 {
-                    await client.SendContactAsync(ownerId, me.Id.ToString(), " Bot service ", null, "has been started", cancellationToken: _cts.Token);
+                    await client.SendTextMessageAsync(ownerId, Resource.Welcome, disableNotification: true, cancellationToken: _cts.Token);
                 }
 
                 var oldUpdates = await client.GetUpdatesAsync(offset: -1, limit: 0, timeout: 0, allowedUpdates: [UpdateType.Message], cancellationToken: _cts.Token);
@@ -137,11 +137,14 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
         var groupCommands = new[]
         {
             new BotCommand { Command = "ban", Description = Resource.Enable_banning },
+            new BotCommand { Command = "throttle_user", Description = Resource.throttled_user },
+            new BotCommand { Command = "free_user", Description = Resource.free_user },
             new BotCommand { Command = "no_restrict", Description = Resource.Disable_any_restricting },
             new BotCommand { Command = "mute", Description = Resource.Enable_muting },
             new BotCommand { Command = "set_spam_time", Description = Resource.Set_the_spam_time },
             new BotCommand { Command = "set_restriction_time", Description = Resource.Set_the_restriction_duration },
             new BotCommand { Command = "silent", Description = Resource.Toggle_silent },
+            new BotCommand { Command = "joining", Description = Resource.joining_description },
             new BotCommand { Command = "help", Description = Resource.ShowHelp }
         };
 
@@ -254,7 +257,6 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
 
             case "/exit":
                 await client.SendTextMessageAsync(message.Chat.Id, Resource.shutting_down, cancellationToken: cancellationToken);
-                if (ownerId != null) await client.SendContactAsync(ownerId, client.BotId.ToString() ?? string.Empty, "Bot service ", null, "has been stopped", cancellationToken: cancellationToken);
                 await _cts.CancelAsync();
                 applicationLifetime.Exit(0); // Stop service
                 break;
@@ -322,10 +324,44 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                     break;
 
                 case "/no_restrict":
-                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), false);
-                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), false);
+                    Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), false);
+                    Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), false);
 
                     await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_not_be_restricted, cancellationToken: cancellationToken);
+                    break;
+
+                case "/throttle_user":
+                    if (ulong.TryParse(args, out var sec) && sec >= 10)
+                    {
+                        if (message.ReplyToMessage?.From?.Id is { } userId)
+                        {
+                            var chatMember = await client.GetChatMemberAsync(message.Chat.Id, message.From.Id, cancellationToken);
+                            if (GetMemberPermissions(chatMember) is not { } permissions)
+                            {
+                                var chat = await client.GetChatAsync(message.Chat.Id, cancellationToken);
+                                permissions = chat.Permissions;
+                            }
+
+                            Settings.SetUserState(message.Chat.Id, userId, sec, permissions ?? new ChatPermissions());
+                            await client.SendTextMessageAsync(message.Chat.Id, $"User {userId} will be throttled.", cancellationToken: cancellationToken);
+                        }
+                    }
+                    else
+                    {
+                        await client.SendTextMessageAsync(message.Chat.Id, $"Invalid time specified. Please provide a positive integer in seconds from 10 to {ulong.MaxValue} seconds.", cancellationToken: cancellationToken);
+                    }
+
+                    break;
+
+                case "/free_user":
+
+                    if (message.ReplyToMessage?.From?.Id is { } userId2)
+                    {
+                        var state = Settings.GetUserState(message.Chat.Id, userId2);
+                        Settings.SetUserState(message.Chat.Id, userId2, 0, state.DefaultPermissions);
+                        await client.SendTextMessageAsync(message.Chat.Id, $"User {userId2} will not be throttled.", cancellationToken: cancellationToken);
+                    }
+
                     break;
 
                 case "/mute":
@@ -380,15 +416,29 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                     await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.Silent_mode, silentMode ? "enabled" : "disabled"), cancellationToken: cancellationToken);
                     break;
 
+                case "/joining":
+                    bool disableJoining;
+                    lock (Settings)
+                    {
+                        Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.DisableJoining), !Settings.GetGroupSettings(message.Chat.Id).DisableJoining);
+                        disableJoining = Settings.GetGroupSettings(message.Chat.Id).DisableJoining;
+                    }
+
+                    await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.join_disable, !disableJoining ? "enabled" : "disabled"), cancellationToken: cancellationToken);
+                    break;
+
                 case "/help":
                     var helpText =
                         $"Available commands:{Environment.NewLine}" +
                         $"/ban - {Resource.Enable_banning}{Environment.NewLine}" +
+                        $"/throttle_user - {Resource.throttled_user}{Environment.NewLine}" +
+                        $"/free_user - {Resource.free_user}{Environment.NewLine}" +
                         $"/no_restrict - {Resource.Disable_any_restricting}{Environment.NewLine}" +
                         $"/mute - {Resource.Enable_muting}{Environment.NewLine}" +
                         $"/set_spam_time <seconds> - {Resource.Set_the_spam_time}{Environment.NewLine}" +
                         $"/set_restriction_time <minutes or 0> - {Resource.Set_the_restriction_duration}{Environment.NewLine}" +
                         $"/silent - {Resource.Toggle_silent}{Environment.NewLine}" +
+                        $"/joining - {Resource.joining_description}{Environment.NewLine}" +
                         $"/help - Show this help message";
                     await client.SendTextMessageAsync(message.Chat.Id, helpText, cancellationToken: cancellationToken);
                     break;
@@ -405,7 +455,17 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
         var spamTimeWindow = Settings.GetGroupSettings(message.Chat.Id).SpamTimeWindow;
         var engaged = Settings.Engaged;
 
+        if (await DeleteJoin(client, message, cancellationToken))
+        {
+            return;
+        }
+
         if (!engaged || message.From == null)
+        {
+            return;
+        }
+
+        if (await PerformUserThrottling(client, message, cancellationToken))
         {
             return;
         }
@@ -424,13 +484,13 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
 
                 if (!Settings.GetGroupSettings(message.Chat.Id).SilentMode)
                 {
-                        await client.SendTextMessageAsync(
-                            message.Chat.Id,
-                            "Non-group members are not allowed to post links.",
-                            disableNotification: true,
-                            replyToMessageId: message.ReplyToMessage?.MessageId,
-                            allowSendingWithoutReply: true,
-                            cancellationToken: cancellationToken);
+                    await client.SendTextMessageAsync(
+                        message.Chat.Id,
+                        "Non-group members are not allowed to post links.",
+                        disableNotification: true,
+                        replyToMessageId: message.ReplyToMessage?.MessageId,
+                        allowSendingWithoutReply: true,
+                        cancellationToken: cancellationToken);
                 }
 
                 return;
@@ -441,6 +501,72 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
         {
             await ElaborateSpam(client, message, cancellationToken);
         }
+    }
+
+    private async Task<bool> DeleteJoin(TTBC.ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    {
+        if (Settings.GetGroupSettings(message.Chat.Id).DisableJoining && message.Type is MessageType.ChatMembersAdded or MessageType.ChatMemberLeft)
+        {
+            await client.DeleteMessageAsync(message.Chat.Id, message.MessageId, cancellationToken);
+
+            var user = $"{message.From!.FirstName} {message.From.LastName} @{message.From.Username} ({message.From.Id}){(message.From.IsBot ? " (bot)" : string.Empty)}";
+
+            await Logger!.LogInformationAsync($"Deleted join/left message from {user}.");
+            return true;
+        }
+
+        return false;
+    }
+
+    private async Task<bool> PerformUserThrottling(TTBC.ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    {
+        var user = Settings.GetUserState(message.Chat.Id, message.From?.Id);
+
+        if (message.From != null && user.ThrottleTime >= 10)
+        {
+            if (message.From.Id == UserAsTheChannelId && message.SenderChat?.Id is { } senderChatId)
+            {
+                await client.BanChatSenderChatAsync(message.Chat.Id, senderChatId, cancellationToken: cancellationToken);
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(user.ThrottleTime), cancellationToken);
+                        await client.UnbanChatSenderChatAsync(chatId: message.Chat.Id, senderChatId: message.SenderChat.Id, cancellationToken: cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        await Logger!.LogInformationAsync($"Error while unbanning: {ex.Message}");
+                    }
+                }, cancellationToken);
+
+            }
+            else
+            {
+                await MuteUser(client, message, TimeSpan.FromSeconds(user.ThrottleTime), cancellationToken);
+
+                if (user.ThrottleTime < 60)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await Task.Delay(TimeSpan.FromSeconds(user.ThrottleTime), cancellationToken);
+                            await UnMuteUser(client, message, cancellationToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            await Logger!.LogInformationAsync($"Error while unbanning: {ex.Message}");
+                        }
+                    }, cancellationToken);
+                }
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     private async Task ElaborateSpam(TTBC.ThrottledTelegramBotClient client, Message  message, CancellationToken cancellationToken)
@@ -477,30 +603,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
             }
             else if (useMute)
             {
-                var permissions = new ChatPermissions
-                {
-                    CanAddWebPagePreviews = false,
-                    CanChangeInfo = false,
-                    CanInviteUsers = false,
-                    CanManageTopics = false,
-                    CanPinMessages = false,
-                    CanSendAudios = false,
-                    CanSendDocuments = false,
-                    CanSendMessages = false,
-                    CanSendOtherMessages = false,
-                    CanSendPhotos = false,
-                    CanSendPolls = false,
-                    CanSendVideoNotes = false,
-                    CanSendVideos = false,
-                    CanSendVoiceNotes = false
-                };
-
-                await client.RestrictChatMemberAsync(
-                    message.Chat.Id,
-                    userId: message.From.Id,
-                    permissions,
-                    untilDate: restrictionDuration.HasValue ? DateTime.UtcNow + restrictionDuration : null,
-                    cancellationToken: cancellationToken);
+                await MuteUser(client, message, restrictionDuration, cancellationToken);
 
                 actionTaken = "muted";
             }
@@ -525,6 +628,71 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
         var chatId = message.Chat.Id.ToString();
         chatId = chatId.StartsWith("-100") ? chatId["-100".Length..] : chatId;
         await Logger.LogInformationAsync($"{actionTaken} user {user} in chat {message.Chat.Title}. Deleted message: https://t.me/c/{chatId}/{message.MessageId}");
+    }
+
+    private static async Task MuteUser(TTBC.ThrottledTelegramBotClient client, Message message, TimeSpan? restrictionDuration, CancellationToken cancellationToken)
+    {
+        var permissions = new ChatPermissions
+        {
+            CanAddWebPagePreviews = false,
+            CanChangeInfo = false,
+            CanInviteUsers = false,
+            CanManageTopics = false,
+            CanPinMessages = false,
+            CanSendAudios = false,
+            CanSendDocuments = false,
+            CanSendMessages = false,
+            CanSendOtherMessages = false,
+            CanSendPhotos = false,
+            CanSendPolls = false,
+            CanSendVideoNotes = false,
+            CanSendVideos = false,
+            CanSendVoiceNotes = false
+        };
+
+        await client.RestrictChatMemberAsync(
+            message.Chat.Id,
+            userId: message.From!.Id,
+            permissions,
+            untilDate: restrictionDuration.HasValue ? DateTime.UtcNow + restrictionDuration : null,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task UnMuteUser(TTBC.ThrottledTelegramBotClient client, Message message, CancellationToken cancellationToken)
+    {
+        var state = Settings.GetUserState(message.Chat.Id, message.From!.Id);
+        
+        await client.RestrictChatMemberAsync(
+            message.Chat.Id,
+            userId: message.From!.Id,
+            state.DefaultPermissions,
+            cancellationToken: cancellationToken);
+    }
+
+    private static ChatPermissions? GetMemberPermissions(ChatMember member)
+    {
+        if (member is ChatMemberRestricted restrictedMember)
+        {
+            return new ChatPermissions
+            {
+                CanAddWebPagePreviews = restrictedMember.CanAddWebPagePreviews,
+                CanChangeInfo = restrictedMember.CanChangeInfo,
+                CanInviteUsers = restrictedMember.CanInviteUsers,
+                CanManageTopics = restrictedMember.CanManageTopics,
+                CanPinMessages = restrictedMember.CanPinMessages,
+                CanSendAudios = restrictedMember.CanSendMessages,
+                CanSendDocuments = restrictedMember.CanSendDocuments,
+                CanSendMessages = restrictedMember.CanSendMessages,
+                CanSendOtherMessages = restrictedMember.CanSendOtherMessages,
+                CanSendPhotos = restrictedMember.CanSendPhotos,
+                CanSendPolls = restrictedMember.CanSendPolls,
+                CanSendVideoNotes = restrictedMember.CanSendVideoNotes,
+                CanSendVideos = restrictedMember.CanSendVideos,
+                CanSendVoiceNotes = restrictedMember.CanSendMessages,
+            };
+        }
+
+        return null;
     }
 
     private async Task<bool> CheckGroupOwnership(TTBC.ThrottledTelegramBotClient client, long chatId, CancellationToken cancellationToken)

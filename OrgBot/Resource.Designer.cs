@@ -124,11 +124,38 @@ namespace OrgBot {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to User will not be throttled..
+        /// </summary>
+        internal static string free_user {
+            get {
+                return ResourceManager.GetString("free_user", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Invalid restriction duration specified. Please provide &apos;0&apos; for infinite or a positive integer in minutes..
         /// </summary>
         internal static string Invalid_restriction_duration {
             get {
                 return ResourceManager.GetString("Invalid restriction duration", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Join/left messages will be {0}.
+        /// </summary>
+        internal static string join_disable {
+            get {
+                return ResourceManager.GetString("join_disable", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Switch Join/Left messages.
+        /// </summary>
+        internal static string joining_description {
+            get {
+                return ResourceManager.GetString("joining_description", resourceCulture);
             }
         }
         
@@ -232,7 +259,7 @@ namespace OrgBot {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Bot is shutting down..
+        ///   Looks up a localized string similar to Bot service has been stopped..
         /// </summary>
         internal static string shutting_down {
             get {
@@ -273,6 +300,15 @@ namespace OrgBot {
         internal static string Stop {
             get {
                 return ResourceManager.GetString("Stop", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Force the user to make a specified pause between messages..
+        /// </summary>
+        internal static string throttled_user {
+            get {
+                return ResourceManager.GetString("throttled_user", resourceCulture);
             }
         }
         
@@ -327,6 +363,15 @@ namespace OrgBot {
         internal static string users_will_not_be_restricted {
             get {
                 return ResourceManager.GetString("users will not be restricted", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to  Bot service has been started.
+        /// </summary>
+        internal static string Welcome {
+            get {
+                return ResourceManager.GetString("Welcome", resourceCulture);
             }
         }
     }
