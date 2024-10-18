@@ -13,8 +13,6 @@ RUN dotnet publish ./OrgBot -c Linux -o ./out
 
 FROM mcr.microsoft.com/dotnet/runtime:8.0
 
-RUN apt-get update && apt-get install -y ntp && apt-get clean
-
 WORKDIR /app
 
 COPY --from=build /app/out ./
@@ -24,7 +22,5 @@ VOLUME /app/data
 ENV BOT_TOKEN=YOUR_BOT_TOKEN
 ENV OWNER=YOUR_TELEGRAM_ID
 ENV SETTINGS_PATH=/app/data/botsettings.json
-
-CMD ["service", "ntp", "start"]
 
 ENTRYPOINT ["dotnet", "OrgBot.dll"]

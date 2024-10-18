@@ -213,7 +213,6 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
         if (ownerId.HasValue && message.From?.Id != ownerId)
         {
             await client.SendTextMessageAsync(message.Chat.Id, Resource.not_bot_owner, cancellationToken: cancellationToken);
-            await client.LeaveChatAsync(message.Chat.Id, cancellationToken: cancellationToken);
             return;
         }
         
