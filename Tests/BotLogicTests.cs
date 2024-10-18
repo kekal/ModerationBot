@@ -963,7 +963,7 @@ public class BotLogicTests
         // Assert
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
             chat.Id,
-            "Unknown command.",
+            Resource.UnknownCommand,
             default,
             default,
             default,
@@ -1577,7 +1577,7 @@ public class BotLogicTests
         // Assert
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
             chat.Id,
-            Resource.Invalid_restriction_duration,
+            "Invalid restriction duration specified. Please provide \'0\' for infinite or a positive integer in minutes.",
             default,
             default,
             default,

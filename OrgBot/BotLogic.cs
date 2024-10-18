@@ -18,37 +18,36 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
 
     private const double ThrottlingTimeout = 1;
     internal readonly BotSettings Settings = BotSettings.Load();
-    internal readonly List<string> ActionLog = [];
     private TelegramLogger Logger { get; set; } = null!;
     private readonly CancellationTokenSource _cts = new();
 
 
     public async Task RunAsync()
     {
-        SetupLogger();
-
         TTBC.ThrottledTelegramBotClient? client = null;
 
         try
         {
-            if (Logger == null)
-            {
-                Console.Error.WriteLine("Failed to setup logging.");
-                applicationLifetime.Exit(1);
-            }
-
-            
             using (client = new TTBC.ThrottledTelegramBotClient(new TTBCT.TelegramBotWrapper(botToken), TimeSpan.FromSeconds(ThrottlingTimeout)))
             {
+                SetupLogger(async notification =>
+                {
+                    if (ownerId != null)
+                    {
+                        await client.SendTextMessageAsync(ownerId, notification, disableNotification: true, cancellationToken: _cts.Token);
+                    }
+                });
+
+                if (Logger == null)
+                {
+                    Console.Error.WriteLine("Failed to setup logging.");
+                    applicationLifetime.Exit(1);
+                }
+
                 await SetCommandsAsync(client);
 
                 var me = await client.GetMeAsync(_cts.Token);
-                await Logger!.LogInformationAsync($"Start listening for @{me.Username} ({me.Id})");
-
-                if (ownerId != null)
-                {
-                    await client.SendTextMessageAsync(ownerId, Resource.Welcome, disableNotification: true, cancellationToken: _cts.Token);
-                }
+                await Logger!.LogInformationAsync(string.Format(Resource.Welcome, me.Username, me.Id));
 
                 var oldUpdates = await client.GetUpdatesAsync(offset: -1, limit: 0, timeout: 0, allowedUpdates: [UpdateType.Message], cancellationToken: _cts.Token);
                 var updateOffset = oldUpdates.Length > 0 ? oldUpdates[^1].Id + 1 : -1;
@@ -80,12 +79,10 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
         }
         catch (ApiRequestException ex)
         {
-            await LastChanceNotification(client, PrintApiError(ex));
-
-            await Logger.LogErrorAsync(PrintApiError(ex));
+            await Logger.LogErrorAsync(PrintApiError(ex), false);
             if (ex is { ErrorCode: 429, Parameters.RetryAfter: { } retryAfter })
             {
-                await Logger.LogErrorAsync(string.Format(Resource.API_rate_limit_exceeded, retryAfter));
+                await Logger.LogErrorAsync(string.Format(Resource.API_rate_limit_exceeded, retryAfter), false);
                 Console.WriteLine(Resource.Too_many_requests, retryAfter);
                 await Task.Delay(TimeSpan.FromSeconds(retryAfter + 5));
             }
@@ -95,7 +92,6 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
         catch (Exception e)
         {
             var error = string.Join(" | ", e.ToString().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-            await LastChanceNotification(client, error);
             await Logger.LogErrorAsync(error);
 
             await Task.Delay(TimeSpan.FromMinutes(1));
@@ -104,29 +100,11 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
         }
     }
 
-    private async Task LastChanceNotification(TTBC.ThrottledTelegramBotClient? client, string text)
+    internal void SetupLogger(Action<string>? notification)
     {
-        try
+        lock (Settings)
         {
-            if (ownerId.HasValue && client != null)
-            {
-                await client.SendTextMessageAsync(ownerId, text, allowSendingWithoutReply: true, cancellationToken: _cts.Token);
-            }
-        }
-        catch
-        {
-            // ignored
-        }
-    }
-
-    internal void SetupLogger()
-    {
-        lock (ActionLog)
-        {
-            lock (Settings)
-            {
-                Logger = new TelegramLogger(ActionLog, Settings.LogSize);
-            }
+            Logger = new TelegramLogger(Settings.LogSize, notification);
         }
     }
 
@@ -190,20 +168,17 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
         }
         catch (ApiRequestException ex)
         {
-            await LastChanceNotification(client, PrintApiError(ex));
-            await Logger.LogErrorAsync(PrintApiError(ex));
-
-            if (ex is { ErrorCode: 429, Parameters.RetryAfter: not null })
+            if (ex is { ErrorCode: 429, Parameters.RetryAfter: { } retryAfter })
             {
-                var retryAfter = ex.Parameters.RetryAfter.Value;
-                await Logger.LogErrorAsync(string.Format(Resource.API_rate_limit_exceeded, retryAfter + 10));
+                await Logger.LogErrorAsync(PrintApiError(ex), false);
+
+                await Logger.LogErrorAsync(string.Format(Resource.API_rate_limit_exceeded, retryAfter + 10), false);
                 await Task.Delay((retryAfter + 10) * 1000, cancellationToken);
             }
         }
         catch (Exception e)
         {
             var error = string.Join(" | ", e.ToString().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-            await LastChanceNotification(client, error);
             await Logger.LogErrorAsync(string.Format(Resource.Failed_to_handle_message, error));
         }
     }
@@ -234,31 +209,35 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
         switch (commandText.Split('@')[0])
         {
             case "/log":
-                var logContent = string.Join($"{Environment.NewLine}{Environment.NewLine}{Environment.NewLine}", ActionLog);
+                var logContent = string.Join($"{Environment.NewLine}{Environment.NewLine}{Environment.NewLine}", Logger.GetLog());
                 await client.SendTextMessageAsync(message.Chat.Id, string.IsNullOrWhiteSpace(logContent) ? "No actions logged yet." : logContent, cancellationToken: cancellationToken);
+
                 break;
 
             case "/engage":
                 Settings.Engaged = true;
-                await client.SendTextMessageAsync(message.Chat.Id, Resource.Bot_is_engaged, cancellationToken: cancellationToken);
+                await Logger.LogInformationAsync(Resource.Bot_is_engaged);
+
                 break;
 
             case "/disengage":
                 Settings.Engaged = false;
-                await client.SendTextMessageAsync(message.Chat.Id, Resource.Bot_disengaged, cancellationToken: cancellationToken);
+                await Logger.LogInformationAsync(Resource.Bot_disengaged);
+
                 break;
 
             case "/restart_service":
-                await client.SendTextMessageAsync(message.Chat.Id, Resource.Restarting, cancellationToken: cancellationToken);
+                await Logger.LogInformationAsync(Resource.Restarting);
                 await _cts.CancelAsync();
                 applicationLifetime.Exit(42);  // Upgrade
+
                 break;
 
-
             case "/exit":
-                await client.SendTextMessageAsync(message.Chat.Id, Resource.shutting_down, cancellationToken: cancellationToken);
+                await Logger.LogInformationAsync(Resource.shutting_down);
                 await _cts.CancelAsync();
                 applicationLifetime.Exit(0); // Stop service
+
                 break;
 
             case "/help":
@@ -320,16 +299,18 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                     Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), true);
                     Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), false);
 
-                    await Logger.LogInformationAsync(Resource.users_will_be_banned);
                     await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_be_banned, cancellationToken: cancellationToken);
+                    await Logger.LogInformationAsync(string.Format(Resource.users_will_be_banned_info, StripChatId(message.Chat.Id)));
+
                     break;
 
                 case "/no_restrict":
                     Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), false);
                     Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), false);
 
-                    await Logger.LogInformationAsync(Resource.users_will_not_be_restricted);
                     await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_not_be_restricted, cancellationToken: cancellationToken);
+                    await Logger.LogInformationAsync(string.Format(Resource.users_will_not_be_restricted_info, StripChatId(message.Chat.Id)));
+
                     break;
 
                 case "/clean_non_group_url_messages":
@@ -340,10 +321,10 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                         cleanNonGroupUrl = Settings.GetGroupSettings(message.Chat.Id).CleanNonGroupUrl;
                     }
 
-                    var clean = string.Format(Resource.Clean_non_group_url_mode, cleanNonGroupUrl ? "enabled" : "disabled");
-
-                    await Logger.LogInformationAsync(clean);
+                    var clean = string.Format(Resource.Clean_non_group_url_mode, (cleanNonGroupUrl ? "enabled" : "disabled"));
                     await client.SendTextMessageAsync(message.Chat.Id, clean, cancellationToken: cancellationToken);
+                    await Logger.LogInformationAsync(string.Format(Resource.Clean_non_group_url_mode_info, clean, StripChatId(message.Chat.Id)));
+
                     break;
 
                 case "/throttle_user":
@@ -360,13 +341,13 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
 
                             Settings.SetUserState(message.Chat.Id, userId, sec, permissions ?? new ChatPermissions());
 
-                            await Logger.LogInformationAsync(string.Format(Resource.throttle_notify, userId, sec));
                             await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.throttle_notify, userId, sec), cancellationToken: cancellationToken);
+                            await Logger.LogInformationAsync(string.Format(Resource.throttle_notify_info, userId, sec, StripChatId(message.Chat.Id)));
                         }
                     }
                     else
                     {
-                        await client.SendTextMessageAsync(message.Chat.Id, $"Invalid time specified. Please provide a positive integer in seconds from 10 to {ulong.MaxValue} seconds.", cancellationToken: cancellationToken);
+                        await Logger.LogErrorAsync(string.Format(Resource.Invalid_time_specified2, ulong.MaxValue));
                     }
 
                     break;
@@ -378,8 +359,8 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                         var state = Settings.GetUserState(message.Chat.Id, userId2);
                         Settings.SetUserState(message.Chat.Id, userId2, 0, state.DefaultPermissions);
 
-                        await Logger.LogInformationAsync($"User {userId2} will not be throttled.");
-                        await client.SendTextMessageAsync(message.Chat.Id, $"User {userId2} will not be throttled.", cancellationToken: cancellationToken);
+                        await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.User_will_not_be_throttled, userId2), cancellationToken: cancellationToken);
+                        await Logger.LogInformationAsync(string.Format(Resource.User_will_not_be_throttled_info, userId2, StripChatId(message.Chat.Id)));
                     }
 
                     break;
@@ -388,8 +369,8 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                     Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.UseMute), true);
                     Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.BanUsers), false);
 
-                    await Logger.LogInformationAsync(Resource.users_will_be_muted);
                     await client.SendTextMessageAsync(message.Chat.Id, Resource.users_will_be_muted, cancellationToken: cancellationToken);
+                    await Logger.LogInformationAsync(string.Format(Resource.users_will_be_muted_info, StripChatId(message.Chat.Id)));
                     break;
 
                 case "/set_spam_time":
@@ -397,13 +378,13 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                     {
                         Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.SpamTimeWindow), TimeSpan.FromSeconds(seconds));
 
-                        await Logger.LogInformationAsync(string.Format(Resource.Spam_time_window_set, seconds));
                         await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.Spam_time_window_set, seconds), cancellationToken: cancellationToken);
+                        await Logger.LogInformationAsync(string.Format(Resource.Spam_time_window_set_info, seconds, StripChatId(message.Chat.Id)));
                     }
                     else
                     {
-                        await Logger.LogInformationAsync(string.Format(Resource.Invalid_time_specified, byte.MaxValue));
                         await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.Invalid_time_specified, byte.MaxValue), cancellationToken: cancellationToken);
+                        await Logger.LogInformationAsync(string.Format(Resource.Invalid_time_specified_info, StripChatId(message.Chat.Id)));
                     }
 
                     break;
@@ -413,20 +394,20 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                     {
                         Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.RestrictionDuration), (TimeSpan?)null);
 
-                        await Logger.LogInformationAsync(Resource.Restriction_forever);
                         await client.SendTextMessageAsync(message.Chat.Id, Resource.Restriction_forever, cancellationToken: cancellationToken);
+                        await Logger.LogInformationAsync(string.Format(Resource.Restriction_forever_info, StripChatId(message.Chat.Id)));
                     }
                     else if (uint.TryParse(args, out var restrictionMinutes) && restrictionMinutes > 0)
                     {
                         Settings.SetGroupSettings(message.Chat.Id, nameof(GroupSettings.RestrictionDuration), TimeSpan.FromMinutes(restrictionMinutes));
 
-                        await Logger.LogInformationAsync(string.Format(Resource.Restriction_duration, restrictionMinutes));
                         await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.Restriction_duration, restrictionMinutes), cancellationToken: cancellationToken);
+                        await Logger.LogInformationAsync(string.Format(Resource.Restriction_duration_info, restrictionMinutes, StripChatId(message.Chat.Id)));
                     }
                     else
                     {
-                        await Logger.LogInformationAsync(Resource.Invalid_restriction_duration);
                         await client.SendTextMessageAsync(message.Chat.Id, Resource.Invalid_restriction_duration, cancellationToken: cancellationToken);
+                        await Logger.LogInformationAsync(Resource.Invalid_restriction_duration);
                     }
 
                     break;
@@ -439,8 +420,8 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                         silentMode = Settings.GetGroupSettings(message.Chat.Id).SilentMode;
                     }
 
-                    await Logger.LogInformationAsync(string.Format(Resource.Silent_mode, silentMode ? "enabled" : "disabled"));
                     await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.Silent_mode, silentMode ? "enabled" : "disabled"), cancellationToken: cancellationToken);
+                    await Logger.LogInformationAsync(string.Format(Resource.Silent_mode_info, silentMode ? "enabled" : "disabled", StripChatId(message.Chat.Id)));
                     break;
 
                 case "/joining":
@@ -451,8 +432,8 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                         disableJoining = Settings.GetGroupSettings(message.Chat.Id).DisableJoining;
                     }
 
-                    await Logger.LogInformationAsync(string.Format(Resource.join_disable, !disableJoining ? "enabled" : "disabled"));
                     await client.SendTextMessageAsync(message.Chat.Id, string.Format(Resource.join_disable, !disableJoining ? "enabled" : "disabled"), cancellationToken: cancellationToken);
+                    await Logger.LogInformationAsync(string.Format(Resource.join_disable_info, !disableJoining ? "enabled" : "disabled", StripChatId(message.Chat.Id)));
                     break;
 
                 case "/help":
@@ -473,8 +454,8 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                     break;
 
                 default:
-                    await Logger.LogInformationAsync(Resource.UnknownCommand);
                     await client.SendTextMessageAsync(message.Chat.Id, Resource.UnknownCommand, cancellationToken: cancellationToken);
+                    await Logger.LogInformationAsync(string.Format(Resource.UnknownCommand_info, StripChatId(message.Chat.Id)));
                     break;
             }
         }
@@ -653,12 +634,19 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
             }
         }
 
-        var chatId = message.Chat.Id.ToString();
-        chatId = chatId.StartsWith("-100") ? chatId["-100".Length..] : chatId;
+        var chatId = StripChatId(message.Chat.Id);
 
         var link = message.ReplyToMessage?.MessageId is not null ? $"replay to https://t.me/c/{chatId}/{message.ReplyToMessage?.MessageId}" : $"https://t.me/c/{chatId}/{message.MessageId}";
 
         await Logger.LogInformationAsync($"{actionTaken} user {user} in chat {message.Chat.Title}. Deleted {link} | >> {message.Text}");
+    }
+
+    private static long StripChatId(long chatId)
+    {
+        var chatIdStr = chatId.ToString();
+        long.TryParse(chatIdStr.StartsWith("-100") ? chatIdStr["-100".Length..] : chatIdStr, out var stripped);
+
+        return stripped;
     }
 
     private static async Task MuteUser(TTBC.ThrottledTelegramBotClient client, Message message, TimeSpan? restrictionDuration, CancellationToken cancellationToken)

@@ -115,6 +115,15 @@ namespace OrgBot {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to {0} in https://t.me/c/{1}..
+        /// </summary>
+        internal static string Clean_non_group_url_mode_info {
+            get {
+                return ResourceManager.GetString("Clean_non_group_url_mode_info", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Disable any restricting users when deleting spam.
         /// </summary>
         internal static string Disable_any_restricting {
@@ -169,11 +178,11 @@ namespace OrgBot {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Invalid restriction duration specified. Please provide &apos;0&apos; for infinite or a positive integer in minutes..
+        ///   Looks up a localized string similar to Invalid restriction duration specified. Please provide 0 for infinite or a positive integer in minutes..
         /// </summary>
         internal static string Invalid_restriction_duration {
             get {
-                return ResourceManager.GetString("Invalid restriction duration", resourceCulture);
+                return ResourceManager.GetString("Invalid_restriction_duration", resourceCulture);
             }
         }
         
@@ -182,16 +191,43 @@ namespace OrgBot {
         /// </summary>
         internal static string Invalid_time_specified {
             get {
-                return ResourceManager.GetString("Invalid time specified", resourceCulture);
+                return ResourceManager.GetString("Invalid_time_specified", resourceCulture);
             }
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Join/left messages will be {0}.
+        ///   Looks up a localized string similar to Invalid time specified in https://t.me/c/{0}..
+        /// </summary>
+        internal static string Invalid_time_specified_info {
+            get {
+                return ResourceManager.GetString("Invalid_time_specified_info", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid time specified. Please provide a positive integer in seconds from 10 to {0} seconds..
+        /// </summary>
+        internal static string Invalid_time_specified2 {
+            get {
+                return ResourceManager.GetString("Invalid time specified2", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Join/left messages will be {0}..
         /// </summary>
         internal static string join_disable {
             get {
                 return ResourceManager.GetString("join_disable", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Join/left messages will be {0} in https://t.me/c/{1}..
+        /// </summary>
+        internal static string join_disable_info {
+            get {
+                return ResourceManager.GetString("join_disable_info", resourceCulture);
             }
         }
         
@@ -254,7 +290,16 @@ namespace OrgBot {
         /// </summary>
         internal static string Restriction_duration {
             get {
-                return ResourceManager.GetString("Restriction duration", resourceCulture);
+                return ResourceManager.GetString("Restriction_duration", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Restriction duration set to {0} minutes in https://t.me/c/{1}..
+        /// </summary>
+        internal static string Restriction_duration_info {
+            get {
+                return ResourceManager.GetString("Restriction_duration_info", resourceCulture);
             }
         }
         
@@ -263,7 +308,16 @@ namespace OrgBot {
         /// </summary>
         internal static string Restriction_forever {
             get {
-                return ResourceManager.GetString("Restriction forever", resourceCulture);
+                return ResourceManager.GetString("Restriction_forever", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Restriction duration set to forever in https://t.me/c/{0}..
+        /// </summary>
+        internal static string Restriction_forever_info {
+            get {
+                return ResourceManager.GetString("Restriction_forever_info", resourceCulture);
             }
         }
         
@@ -326,7 +380,16 @@ namespace OrgBot {
         /// </summary>
         internal static string Silent_mode {
             get {
-                return ResourceManager.GetString("Silent mode", resourceCulture);
+                return ResourceManager.GetString("Silent_mode", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Silent mode is now {0} in https://t.me/c/{1}..
+        /// </summary>
+        internal static string Silent_mode_info {
+            get {
+                return ResourceManager.GetString("Silent_mode_info", resourceCulture);
             }
         }
         
@@ -335,7 +398,16 @@ namespace OrgBot {
         /// </summary>
         internal static string Spam_time_window_set {
             get {
-                return ResourceManager.GetString("Spam time window set", resourceCulture);
+                return ResourceManager.GetString("Spam_time_window_set", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Spam time window set to {0} seconds in https://t.me/c/{1}..
+        /// </summary>
+        internal static string Spam_time_window_set_info {
+            get {
+                return ResourceManager.GetString("Spam_time_window_set_info", resourceCulture);
             }
         }
         
@@ -363,6 +435,15 @@ namespace OrgBot {
         internal static string throttle_notify {
             get {
                 return ResourceManager.GetString("throttle_notify", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to User {0} will be throttled with {1} seconds pause in https://t.me/c/{2}.
+        /// </summary>
+        internal static string throttle_notify_info {
+            get {
+                return ResourceManager.GetString("throttle_notify_info", resourceCulture);
             }
         }
         
@@ -403,6 +484,33 @@ namespace OrgBot {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Unknown command in https://t.me/c/{0}..
+        /// </summary>
+        internal static string UnknownCommand_info {
+            get {
+                return ResourceManager.GetString("UnknownCommand_info", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to User {0} will not be throttled..
+        /// </summary>
+        internal static string User_will_not_be_throttled {
+            get {
+                return ResourceManager.GetString("User will not be throttled", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to User {0} will not be throttled in https://t.me/c/{1}..
+        /// </summary>
+        internal static string User_will_not_be_throttled_info {
+            get {
+                return ResourceManager.GetString("User will not be throttled_info", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Spamming users will be banned..
         /// </summary>
         internal static string users_will_be_banned {
@@ -412,11 +520,29 @@ namespace OrgBot {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Spamming users will be banned in https://t.me/c/{0}.
+        /// </summary>
+        internal static string users_will_be_banned_info {
+            get {
+                return ResourceManager.GetString("users_will_be_banned_info", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Spamming users will be muted..
         /// </summary>
         internal static string users_will_be_muted {
             get {
-                return ResourceManager.GetString("users will be muted", resourceCulture);
+                return ResourceManager.GetString("users_will_be_muted", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Spamming users will be muted in https://t.me/c/{0}..
+        /// </summary>
+        internal static string users_will_be_muted_info {
+            get {
+                return ResourceManager.GetString("users_will_be_muted_info", resourceCulture);
             }
         }
         
@@ -430,7 +556,16 @@ namespace OrgBot {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to  Bot service has been started.
+        ///   Looks up a localized string similar to Spamming users will not be restricted in https://t.me/c/{0}..
+        /// </summary>
+        internal static string users_will_not_be_restricted_info {
+            get {
+                return ResourceManager.GetString("users_will_not_be_restricted_info", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Start listening for @{0} ({1}).
         /// </summary>
         internal static string Welcome {
             get {
