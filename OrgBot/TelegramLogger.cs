@@ -6,21 +6,25 @@ namespace OrgBot;
 /// <inheritdoc cref="Logger{T}"/>>
 public class TelegramLogger : ILogger
 {
+    private const int MaxLength = 4096;
     private readonly Action<string>? _notificationHandler;
 
-    private int LogSize { get; }
     private readonly string _logFilePath = Path.Combine(".", "data", "bot_log.txt");
 
     /// <inheritdoc cref="Logger{T}"/>>
     public TelegramLogger(int logSize, Action<string>? notificationHandler = null)
     {
         _notificationHandler = notificationHandler;
-        LogSize = logSize;
 
         var logDirectory = Path.GetDirectoryName(_logFilePath);
         if (!string.IsNullOrEmpty(logDirectory) && !Directory.Exists(logDirectory))
         {
             Directory.CreateDirectory(logDirectory);
+        }
+
+        if (!File.Exists(_logFilePath))
+        {
+            try { File.Create(_logFilePath).Close(); } catch { }
         }
     }
 
@@ -77,14 +81,13 @@ public class TelegramLogger : ILogger
 
     public string GetLog()
     {
-        const int maxLength = 4096;
         var lines = File.ReadLines(_logFilePath).Reverse();
         var sb = new StringBuilder();
 
         foreach (var line in lines)
         {
             var trim = line.Trim();
-            if (sb.Length + trim.Length + Environment.NewLine.Length > maxLength)
+            if (sb.Length + trim.Length + Environment.NewLine.Length > MaxLength)
                 break;
 
             sb.Insert(0, trim + Environment.NewLine);

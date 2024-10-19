@@ -35,7 +35,7 @@ public class BotSettingsTests
 
         // Assert
         Assert.IsTrue(settings.Engaged);
-        Assert.AreEqual(30u, settings.LogSize);
+        Assert.AreEqual(200, settings.LogSize);
         Assert.IsNotNull(settings.GroupSettings);
         Assert.AreEqual(0, settings.GroupSettings.Count);
     }
@@ -63,7 +63,7 @@ public class BotSettingsTests
         };
 
         // Assert
-        Assert.AreEqual(50u, settings.LogSize);
+        Assert.AreEqual(50, settings.LogSize);
     }
 
     [TestMethod]
@@ -126,7 +126,7 @@ public class BotSettingsTests
 
         // Assert
         Assert.IsFalse(loadedSettings.Engaged);
-        Assert.AreEqual(30u, loadedSettings.LogSize);
+        Assert.AreEqual(30, loadedSettings.LogSize);
         var groupSettings = loadedSettings.GetGroupSettings(groupId);
         Assert.IsTrue(groupSettings.BanUsers);
     }

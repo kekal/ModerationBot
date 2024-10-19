@@ -24,7 +24,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
 
     public async Task RunAsync()
     {
-        TTBC.ThrottledTelegramBotClient? client = null;
+        TTBC.ThrottledTelegramBotClient? client;
 
         try
         {
@@ -34,7 +34,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                 {
                     if (ownerId != null)
                     {
-                        await client.SendTextMessageAsync(ownerId, notification, disableNotification: true, cancellationToken: _cts.Token);
+                        await client.SendTextMessageAsync(ownerId, notification, allowSendingWithoutReply: true, cancellationToken: _cts.Token);
                     }
                 });
 
@@ -175,6 +175,11 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                 await Logger.LogErrorAsync(string.Format(Resource.API_rate_limit_exceeded, retryAfter + 10), false);
                 await Task.Delay((retryAfter + 10) * 1000, cancellationToken);
             }
+            else
+            {
+                var error = string.Join(" | ", ex.ToString().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                await Logger.LogErrorAsync(error, false);
+            }
         }
         catch (Exception e)
         {
@@ -210,7 +215,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
         {
             case "/log":
                 var logContent = string.Join($"{Environment.NewLine}{Environment.NewLine}{Environment.NewLine}", Logger.GetLog());
-                await client.SendTextMessageAsync(message.Chat.Id, string.IsNullOrWhiteSpace(logContent) ? "No actions logged yet." : logContent, cancellationToken: cancellationToken);
+                await client.SendTextMessageAsync(message.Chat.Id, string.IsNullOrWhiteSpace(logContent.Trim()) ? "No actions logged yet." : logContent, cancellationToken: cancellationToken);
 
                 break;
 

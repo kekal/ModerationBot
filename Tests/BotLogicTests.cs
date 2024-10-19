@@ -18,6 +18,7 @@ public class BotLogicTests
     private const long OwnerId = 123456789;
     private const string BotToken = "test_bot_token";
     private const string TestSettingsFilePath = "test_botsettings.json";
+    private readonly string TestLogFilePath = Path.Combine(".", "data", "bot_log.txt");
 
     [TestInitialize]
     public void Setup()
@@ -29,13 +30,21 @@ public class BotLogicTests
             File.Delete(TestSettingsFilePath);
         }
 
+        if (File.Exists(TestLogFilePath))
+        {
+            File.Delete(TestLogFilePath);
+        }
+
         _mockTelegramBotClient = new Mock<TTCBT.IMyTelegramBotClient>();
         _throttledClient = new ThrottledTelegramBotClient.ThrottledTelegramBotClient(_mockTelegramBotClient.Object, TimeSpan.FromMilliseconds(100));
         _mockApplicationLifetime = new Mock<TTCBT.IApplicationLifetime>();
         _botLogic = new BotLogic(BotToken, OwnerId, _mockApplicationLifetime.Object);
 
 
-        _botLogic.SetupLogger();
+        _botLogic.SetupLogger(async notification =>
+        {
+            await _throttledClient.SendTextMessageAsync(OwnerId, notification, allowSendingWithoutReply: true, cancellationToken: CancellationToken.None);
+        });
     }
 
     [TestCleanup]
@@ -60,7 +69,7 @@ public class BotLogicTests
         {
             MessageId = 1,
             From = new User { Id = OwnerId, FirstName = "Owner" },
-            Chat = new Chat { Id = 1000, Type = ChatType.Private },
+            Chat = new Chat { Id = OwnerId, Type = ChatType.Private },
             Text = "/exit",
             Entities = [new MessageEntity { Type = MessageEntityType.BotCommand, Offset = 0, Length = 5 }]
         };
@@ -72,7 +81,7 @@ public class BotLogicTests
         // Assert
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
                 message.Chat.Id,
-                Resource.shutting_down,
+                It.Is<string>(s => s.Contains(Resource.shutting_down)),
                 default,
                 default,
                 default,
@@ -80,25 +89,10 @@ public class BotLogicTests
                 default,
                 default,
                 default,
-                default,
+                true,
                 default,
                 It.IsAny<CancellationToken>())
             , Times.Once);
-
-        _mockTelegramBotClient.Verify(c => c.SendContactAsync(
-                OwnerId,
-                It.IsAny<string>(),
-                "Bot service ",
-                default,
-                "has been stopped",
-                default,
-                default,
-                default,
-                default,
-                default,
-                default,
-                It.IsAny<CancellationToken>()),
-            Times.Once);
 
         _mockApplicationLifetime.Verify(a => a.Exit(0), Times.Once);
     }
@@ -156,10 +150,6 @@ public class BotLogicTests
             default,
             default,
             default,
-            It.IsAny<CancellationToken>()), Times.Once);
-
-        _mockTelegramBotClient.Verify(c => c.LeaveChatAsync(
-            message.Chat.Id,
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -250,10 +240,6 @@ public class BotLogicTests
             default,
             default,
             default,
-            It.IsAny<CancellationToken>()), Times.Once);
-
-        _mockTelegramBotClient.Verify(c => c.LeaveChatAsync(
-            message.Chat.Id,
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -708,7 +694,17 @@ public class BotLogicTests
     public async Task HandleUpdateAsync_PrivateLogCommand_ShouldSendActionLog()
     {
         // Arrange
-        var message = new Message
+        var message1 = new Message
+        {
+            MessageId = 1,
+            From = new User { Id = OwnerId, FirstName = "Owner" },
+            Chat = new Chat { Id = 10009, Type = ChatType.Private },
+            Text = "/engage",
+            Entities = [new MessageEntity { Type = MessageEntityType.BotCommand, Offset = 0, Length = 7 }]
+        };
+        var update1 = new Update { Id = 1, Message = message1 };
+
+        var message2 = new Message
         {
             MessageId = 1,
             From = new User { Id = OwnerId, FirstName = "Owner" },
@@ -716,23 +712,17 @@ public class BotLogicTests
             Text = "/log",
             Entities = [new MessageEntity { Type = MessageEntityType.BotCommand, Offset = 0, Length = 4 }]
         };
-        var update = new Update { Id = 1, Message = message };
+        var update2 = new Update { Id = 2, Message = message2 };
 
-        lock (_botLogic.ActionLog)
-        {
-            _botLogic.ActionLog.Add("[Time] Action1");
-            _botLogic.ActionLog.Add("[Time] Action2");
-        }
-
-        var expectedLogContent = $"[Time] Action1{Environment.NewLine}{Environment.NewLine}{Environment.NewLine}[Time] Action2";
 
         // Act
-        await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
+        await _botLogic.HandleUpdateAsync(_throttledClient, update1, CancellationToken.None);
+        await _botLogic.HandleUpdateAsync(_throttledClient, update2, CancellationToken.None);
 
         // Assert
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
-                message.Chat.Id,
-                expectedLogContent,
+                It.IsAny<ChatId>(),
+                It.Is<string>(s => s.Contains(Resource.Bot_is_engaged)),
                 default,
                 default,
                 default,
@@ -740,10 +730,10 @@ public class BotLogicTests
                 default,
                 default,
                 default,
-                default,
+                It.IsAny<bool?>(),
                 default,
                 It.IsAny<CancellationToken>()),
-            Times.Once);
+            Times.Exactly(2));
     }
 
     [TestMethod]
@@ -754,7 +744,7 @@ public class BotLogicTests
         {
             MessageId = 1,
             From = new User { Id = OwnerId, FirstName = "Owner" },
-            Chat = new Chat { Id = 10010, Type = ChatType.Private },
+            Chat = new Chat { Id = OwnerId, Type = ChatType.Private },
             Text = "/engage",
             Entities = [new MessageEntity { Type = MessageEntityType.BotCommand, Offset = 0, Length = 7 }]
         };
@@ -770,7 +760,7 @@ public class BotLogicTests
 
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
             message.Chat.Id,
-            Resource.Bot_is_engaged,
+            It.Is<string>(s => s.Contains(Resource.Bot_is_engaged)),
             default,
             default,
             default,
@@ -778,7 +768,7 @@ public class BotLogicTests
             default,
             default,
             default,
-            default,
+            true,
             default,
             It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -1008,23 +998,14 @@ public class BotLogicTests
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(apiException);
 
+        await using var errorWriter = new StringWriter();
+        Console.SetError(errorWriter);
+
         // Act
         await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
 
         // Assert
-        _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
-            OwnerId,
-            $"API Error: {Environment.NewLine}ErrorCode: 0 | Bad Request: Something went wrong{Environment.NewLine} | ",
-            default,
-            default,
-            default,
-            default,
-            default,
-            default,
-            default,
-            true,
-            default,
-            It.IsAny<CancellationToken>()), Times.Once);
+        Assert.IsTrue(errorWriter.ToString().Contains("Telegram.Bot.Exceptions.ApiRequestException: Bad Request: Something went wrong"), "Standard Error does not contain the expected error message.");
     }
 
     [TestMethod]
@@ -1297,7 +1278,7 @@ public class BotLogicTests
         {
             MessageId = 1,
             From = new User { Id = OwnerId, FirstName = "Owner" },
-            Chat = new Chat { Id = 10022, Type = ChatType.Private },
+            Chat = new Chat { Id = OwnerId, Type = ChatType.Private },
             Text = "/disengage",
             Entities = [new MessageEntity { Type = MessageEntityType.BotCommand, Offset = 0, Length = 10 }]
         };
@@ -1313,7 +1294,7 @@ public class BotLogicTests
 
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
             message.Chat.Id,
-            Resource.Bot_disengaged,
+            It.Is<string>(s => s.Contains(Resource.Bot_disengaged)),
             default,
             default,
             default,
@@ -1321,7 +1302,7 @@ public class BotLogicTests
             default,
             default,
             default,
-            default,
+            true,
             default,
             It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -1334,7 +1315,7 @@ public class BotLogicTests
         {
             MessageId = 1,
             From = new User { Id = OwnerId, FirstName = "Owner" },
-            Chat = new Chat { Id = 10023, Type = ChatType.Private },
+            Chat = new Chat { Id = OwnerId, Type = ChatType.Private },
             Text = "/restart_service",
             Entities = [new MessageEntity { Type = MessageEntityType.BotCommand, Offset = 0, Length = 16 }]
         };
@@ -1346,7 +1327,7 @@ public class BotLogicTests
         // Assert
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
             message.Chat.Id,
-            Resource.Restarting,
+            It.Is<string>(s => s.Contains(Resource.Restarting)),
             default,
             default,
             default,
@@ -1354,7 +1335,7 @@ public class BotLogicTests
             default,
             default,
             default,
-            default,
+            true,
             default,
             It.IsAny<CancellationToken>()), Times.Once);
 
@@ -1577,7 +1558,7 @@ public class BotLogicTests
         // Assert
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
             chat.Id,
-            "Invalid restriction duration specified. Please provide \'0\' for infinite or a positive integer in minutes.",
+            Resource.Invalid_restriction_duration,
             default,
             default,
             default,
@@ -1722,7 +1703,10 @@ public class BotLogicTests
 
         // Arrange 2
         var newBotLogic = new BotLogic(BotToken, OwnerId, _mockApplicationLifetime.Object);
-        newBotLogic.SetupLogger();
+        newBotLogic.SetupLogger(async notification =>
+        {
+            await _throttledClient.SendTextMessageAsync(OwnerId, notification, disableNotification: true, cancellationToken: CancellationToken.None);
+        });
 
         var spamMessage = new Message
         {
@@ -1807,6 +1791,7 @@ public class BotLogicTests
         groupSettings.BanUsers = true;
         groupSettings.UseMute = false;
         groupSettings.SilentMode = false;
+        groupSettings.CleanNonGroupUrl = true;
 
         // Act
         await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);

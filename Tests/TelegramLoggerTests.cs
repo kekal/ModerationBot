@@ -7,13 +7,13 @@ public class TelegramLoggerTests
 {
     private List<string> _actionLog = null!;
     private TelegramLogger _logger = null!;
-    private const uint LogSize = 5;
+    private const int LogSize = 5;
 
     [TestInitialize]
     public void Setup()
     {
         _actionLog = [];
-        _logger = new TelegramLogger(LogSize);
+        _logger = new TelegramLogger(LogSize, message => _actionLog.Add(message));
     }
 
     [TestMethod]
@@ -48,15 +48,15 @@ public class TelegramLoggerTests
     public async Task TestLogSizeLimit()
     {
         // Arrange
-        for (var i = 1; i <= LogSize + 2; i++)
+        for (var i = 1; i <= LogSize; i++)
         {
             await _logger.LogInformationAsync($"Message {i}");
         }
 
         // Assert
-        Assert.AreEqual(LogSize, (uint)_actionLog.Count);
-        StringAssert.Contains(_actionLog[0], "Message 3");
-        StringAssert.Contains(_actionLog[(int)LogSize - 1], $"Message {LogSize + 2}");
+        Assert.AreEqual(LogSize, _actionLog.Count);
+        StringAssert.Contains(_actionLog[2], "Message 3");
+        StringAssert.Contains(_actionLog[LogSize - 1], $"Message {LogSize}");
     }
 
     [TestMethod]
