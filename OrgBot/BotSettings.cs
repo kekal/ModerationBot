@@ -63,7 +63,6 @@ public class BotSettings
         {
             GetGroupSettings(groupId).ThrottledUsers[userId] = new UserState
             {
-                Id = userId,
                 DefaultPermissions = permissions,
                 ThrottleTime = time
             };

@@ -20,6 +20,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
     internal readonly BotSettings Settings = BotSettings.Load();
     private TelegramLogger Logger { get; set; } = null!;
     private readonly CancellationTokenSource _cts = new();
+    internal ulong Timeout = 60;
 
 
     public async Task RunAsync()
@@ -56,39 +57,52 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
 
                 while (!_cts.Token.IsCancellationRequested)
                 {
-                    var updates = await client.GetUpdatesAsync(
-                        offset: updateOffset,
-                        limit: 100,
-                        timeout: 60,
-                        allowedUpdates: [UpdateType.Message, UpdateType.MyChatMember],
-                        cancellationToken: _cts.Token);
-
-                    foreach (var update in updates)
+                    try
                     {
-                        if (_cts.Token.IsCancellationRequested)
+                        var updates = await client.GetUpdatesAsync(
+                            offset: updateOffset,
+                            limit: 100,
+                            timeout: 60,
+                            allowedUpdates: [UpdateType.Message, UpdateType.MyChatMember],
+                            cancellationToken: _cts.Token);
+
+                        foreach (var update in updates)
                         {
-                            break;
+                            if (_cts.Token.IsCancellationRequested)
+                            {
+                                break;
+                            }
+
+                            await HandleUpdateAsync(client, update, _cts.Token);
+
+                            updateOffset = update.Id + 1;
                         }
+                    }
+                    catch (ApiRequestException ex)
+                    {
+                        await Logger.LogErrorAsync(PrintApiError(ex), false);
+                        if (ex is { ErrorCode: 429, Parameters.RetryAfter: { } retryAfter })
+                        {
+                            await Logger.LogErrorAsync(string.Format(Resource.API_rate_limit_exceeded, retryAfter), false);
+                            await Logger.LogErrorAsync(string.Format(Resource.Too_many_requests, retryAfter), false);
+                            await Task.Delay(TimeSpan.FromSeconds(retryAfter + 5));
+                        }
+                        else
+                        {
+                            await Task.Delay(TimeSpan.FromMinutes(1));
+                        }
+                    }
+                    catch (RequestException ex)
+                    {
+                        var stack= string.Join(" | ", ex.StackTrace?.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? []);
+                        await Logger.LogErrorAsync($"{ex.Message} | {ex.HttpStatusCode} | {stack}", false);
 
-                        await HandleUpdateAsync(client, update, _cts.Token);
-
-                        updateOffset = update.Id + 1;
+                        await Task.Delay(TimeSpan.FromMinutes(1));
                     }
                 }
             }
         }
-        catch (ApiRequestException ex)
-        {
-            await Logger.LogErrorAsync(PrintApiError(ex), false);
-            if (ex is { ErrorCode: 429, Parameters.RetryAfter: { } retryAfter })
-            {
-                await Logger.LogErrorAsync(string.Format(Resource.API_rate_limit_exceeded, retryAfter), false);
-                Console.WriteLine(Resource.Too_many_requests, retryAfter);
-                await Task.Delay(TimeSpan.FromSeconds(retryAfter + 5));
-            }
-
-            applicationLifetime.Exit(24);
-        }
+       
         catch (Exception e)
         {
             var error = string.Join(" | ", e.ToString().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
@@ -104,7 +118,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
     {
         lock (Settings)
         {
-            Logger = new TelegramLogger(Settings.LogSize, notification);
+            Logger = new TelegramLogger(notification);
         }
     }
 
@@ -261,7 +275,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                 break;
 
             default:
-                await client.SendTextMessageAsync(message.Chat.Id, Resource.UnknownCommand, cancellationToken: cancellationToken);
+                await Logger.LogErrorAsync(Resource.UnknownCommand);
                 break;
         }
     }
@@ -338,7 +352,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                         if (message.ReplyToMessage?.From?.Id is { } userId)
                         {
                             var chatMember = await client.GetChatMemberAsync(message.Chat.Id, message.From.Id, cancellationToken);
-                            if (GetMemberPermissions(chatMember) is not { } permissions)
+                            if (GetMemberRestrictions(chatMember) is not { } permissions)
                             {
                                 var chat = await client.GetChatAsync(message.Chat.Id, cancellationToken);
                                 permissions = chat.Permissions;
@@ -459,8 +473,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                     break;
 
                 default:
-                    await client.SendTextMessageAsync(message.Chat.Id, Resource.UnknownCommand, cancellationToken: cancellationToken);
-                    await Logger.LogInformationAsync(string.Format(Resource.UnknownCommand_info, StripChatId(message.Chat.Id)));
+                    await Logger.LogErrorAsync(string.Format(Resource.UnknownCommand_info, StripChatId(message.Chat.Id)));
                     break;
             }
         }
@@ -562,7 +575,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
             {
                 await MuteUser(client, message, TimeSpan.FromSeconds(user.ThrottleTime), cancellationToken);
 
-                if (user.ThrottleTime < 60)
+                if (user.ThrottleTime < Timeout)
                 {
                     _ = Task.Run(async () =>
                     {
@@ -674,6 +687,11 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
             CanSendVoiceNotes = false
         };
 
+        var throttlingDuration = TimeSpan.FromSeconds(60);
+        if (restrictionDuration < throttlingDuration)
+        {
+            restrictionDuration = throttlingDuration;
+        }
         await client.RestrictChatMemberAsync(
             message.Chat.Id,
             userId: message.From!.Id,
@@ -693,27 +711,69 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
             cancellationToken: cancellationToken);
     }
 
-    private static ChatPermissions? GetMemberPermissions(ChatMember member)
+    private static ChatPermissions? GetMemberRestrictions(ChatMember member)
     {
         if (member is ChatMemberRestricted restrictedMember)
         {
-            return new ChatPermissions
+            var permissions = new ChatPermissions();
+            if (!restrictedMember.CanAddWebPagePreviews)
             {
-                CanAddWebPagePreviews = restrictedMember.CanAddWebPagePreviews,
-                CanChangeInfo = restrictedMember.CanChangeInfo,
-                CanInviteUsers = restrictedMember.CanInviteUsers,
-                CanManageTopics = restrictedMember.CanManageTopics,
-                CanPinMessages = restrictedMember.CanPinMessages,
-                CanSendAudios = restrictedMember.CanSendMessages,
-                CanSendDocuments = restrictedMember.CanSendDocuments,
-                CanSendMessages = restrictedMember.CanSendMessages,
-                CanSendOtherMessages = restrictedMember.CanSendOtherMessages,
-                CanSendPhotos = restrictedMember.CanSendPhotos,
-                CanSendPolls = restrictedMember.CanSendPolls,
-                CanSendVideoNotes = restrictedMember.CanSendVideoNotes,
-                CanSendVideos = restrictedMember.CanSendVideos,
-                CanSendVoiceNotes = restrictedMember.CanSendMessages,
-            };
+                permissions.CanAddWebPagePreviews = restrictedMember.CanAddWebPagePreviews;
+            }
+            if (!restrictedMember.CanChangeInfo)
+            {
+                permissions.CanChangeInfo = restrictedMember.CanChangeInfo;
+            }
+            if (!restrictedMember.CanInviteUsers)
+            {
+                permissions.CanInviteUsers = restrictedMember.CanInviteUsers;
+            }
+            if (restrictedMember.CanManageTopics is not true)
+            {
+                permissions.CanManageTopics = restrictedMember.CanManageTopics;
+            }
+            if (!restrictedMember.CanPinMessages)
+            {
+                permissions.CanPinMessages = restrictedMember.CanPinMessages;
+            }
+            if (!restrictedMember.CanSendMessages)
+            {
+                permissions.CanSendMessages = restrictedMember.CanSendMessages;
+            }
+            if (!restrictedMember.CanSendDocuments)
+            {
+                permissions.CanSendDocuments = restrictedMember.CanSendDocuments;
+            }
+            if (!restrictedMember.CanSendMessages)
+            {
+                permissions.CanSendMessages = restrictedMember.CanSendMessages;
+            }
+            if (!restrictedMember.CanSendOtherMessages)
+            {
+                permissions.CanSendOtherMessages = restrictedMember.CanSendOtherMessages;
+            }
+            if (!restrictedMember.CanSendPhotos)
+            {
+                permissions.CanSendPhotos = restrictedMember.CanSendPhotos;
+            }
+            if (!restrictedMember.CanSendPolls)
+            {
+                permissions.CanSendPolls = restrictedMember.CanSendPolls;
+            }
+            if (!restrictedMember.CanSendVideoNotes)
+            {
+                permissions.CanSendVideoNotes = restrictedMember.CanSendVideoNotes;
+            }
+            if (!restrictedMember.CanSendVideos)
+            {
+                permissions.CanSendVideos = restrictedMember.CanSendVideos;
+            }
+            if (!restrictedMember.CanSendVoiceNotes)
+            {
+                permissions.CanSendVoiceNotes = restrictedMember.CanSendVoiceNotes;
+            }
+
+            return permissions;
         }
 
         return null;
@@ -787,7 +847,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
 
         sb.AppendLine(ex.Message).Append(" | ");
 
-        return $"API Error: {Environment.NewLine}{sb}";
+        return $"API Error: {sb}";
     }
 
     private static bool IsReplyToLinkedChannelPost(Message message)

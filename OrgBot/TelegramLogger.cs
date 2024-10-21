@@ -12,7 +12,7 @@ public class TelegramLogger : ILogger
     private readonly string _logFilePath = Path.Combine(".", "data", "bot_log.txt");
 
     /// <inheritdoc cref="Logger{T}"/>>
-    public TelegramLogger(int logSize, Action<string>? notificationHandler = null)
+    public TelegramLogger(Action<string>? notificationHandler = null)
     {
         _notificationHandler = notificationHandler;
 
