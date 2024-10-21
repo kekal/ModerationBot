@@ -13,7 +13,7 @@ public class TelegramLoggerTests
     public void Setup()
     {
         _actionLog = [];
-        _logger = new TelegramLogger(LogSize, message => _actionLog.Add(message));
+        _logger = new TelegramLogger(message => _actionLog.Add(message));
     }
 
     [TestMethod]

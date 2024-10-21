@@ -55,6 +55,11 @@ public class BotLogicTests
             File.Delete(TestSettingsFilePath);
         }
 
+        if (File.Exists(TestLogFilePath))
+        {
+            File.Delete(TestLogFilePath);
+        }
+
         Environment.SetEnvironmentVariable("SETTINGS_PATH", null);
 
         _mockTelegramBotClient.Reset();
@@ -792,8 +797,8 @@ public class BotLogicTests
 
         // Assert
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
-            message.Chat.Id,
-            Resource.UnknownCommand,
+            OwnerId,
+            It.Is<string>(s => s.Contains(Resource.UnknownCommand)),
             default,
             default,
             default,
@@ -801,7 +806,7 @@ public class BotLogicTests
             default,
             default,
             default,
-            default,
+            true,
             default,
             It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -952,8 +957,8 @@ public class BotLogicTests
 
         // Assert
         _mockTelegramBotClient.Verify(c => c.SendTextMessageAsync(
-            chat.Id,
-            Resource.UnknownCommand,
+            OwnerId,
+            It.Is<string>(s => s.Contains(string.Format(Resource.UnknownCommand_info, message.Chat.Id))),
             default,
             default,
             default,
@@ -961,7 +966,7 @@ public class BotLogicTests
             default,
             default,
             default,
-            default,
+            true,
             default,
             It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -2035,4 +2040,75 @@ public class BotLogicTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
+
+
+    [TestMethod]
+    public async Task PerformUserThrottling_UserWithThrottleTime_ShouldMuteUser()
+    {
+        // Arrange
+        var chat = new Chat { Id = 12001, Type = ChatType.Group };
+        var throttledUser = new User { Id = 666666, FirstName = "ThrottledUser" };
+        const uint throttleTime = 11;
+
+        var message = new Message
+        {
+            MessageId = 1,
+            From = throttledUser,
+            Chat = chat,
+            Text = "This is a message from a throttled user",
+            Date = DateTime.UtcNow
+        };
+        var update = new Update { Id = 1, Message = message };
+
+        var defaultPermissions = new ChatPermissions
+        {
+            CanSendMessages = true,
+            CanSendDocuments = true,
+            CanSendPhotos = true,
+            CanSendPolls = true,
+            CanSendOtherMessages = true,
+            CanAddWebPagePreviews = true,
+            CanChangeInfo = false,
+            CanInviteUsers = true,
+            CanPinMessages = false
+        };
+        _botLogic.Settings.SetUserState(chat.Id, throttledUser.Id, throttleTime, defaultPermissions);
+        _botLogic.Timeout = 12;
+
+        _mockTelegramBotClient.Setup(c => c.GetChatMemberAsync(
+                chat.Id,
+                throttledUser.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatMemberMember
+            {
+                User = throttledUser
+            });
+
+        // Act
+        await _botLogic.HandleUpdateAsync(_throttledClient, update, CancellationToken.None);
+
+        // Assert
+        _mockTelegramBotClient.Verify(c => c.RestrictChatMemberAsync(
+                chat.Id,
+                throttledUser.Id,
+                It.Is<ChatPermissions>(p => p.CanSendMessages == false),
+                default,
+                It.Is<DateTime?>(d => DHasValue(d, throttleTime)),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    private static bool DHasValue(DateTime? d, uint throttleTime)
+    {
+        var dateTime = d.Value;
+        var fromSeconds = DateTime.UtcNow + TimeSpan.FromSeconds(throttleTime);
+
+        var sdfg = dateTime - fromSeconds;
+        return d.HasValue && dateTime == fromSeconds;
+    }
+
+
+
+
+   
 }

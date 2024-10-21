@@ -20,6 +20,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
     internal readonly BotSettings Settings = BotSettings.Load();
     private TelegramLogger Logger { get; set; } = null!;
     private readonly CancellationTokenSource _cts = new();
+    internal ulong Timeout = 60;
 
 
     public async Task RunAsync()
@@ -56,23 +57,33 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
 
                 while (!_cts.Token.IsCancellationRequested)
                 {
-                    var updates = await client.GetUpdatesAsync(
-                        offset: updateOffset,
-                        limit: 100,
-                        timeout: 60,
-                        allowedUpdates: [UpdateType.Message, UpdateType.MyChatMember],
-                        cancellationToken: _cts.Token);
-
-                    foreach (var update in updates)
+                    try
                     {
-                        if (_cts.Token.IsCancellationRequested)
+                        var updates = await client.GetUpdatesAsync(
+                            offset: updateOffset,
+                            limit: 100,
+                            timeout: 60,
+                            allowedUpdates: [UpdateType.Message, UpdateType.MyChatMember],
+                            cancellationToken: _cts.Token);
+
+                        foreach (var update in updates)
                         {
-                            break;
+                            if (_cts.Token.IsCancellationRequested)
+                            {
+                                break;
+                            }
+
+                            await HandleUpdateAsync(client, update, _cts.Token);
+
+                            updateOffset = update.Id + 1;
                         }
+                    }
+                    catch (RequestException ex) when (ex is not ApiRequestException)
+                    {
+                        var stack= string.Join(" | ", ex.StackTrace.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                        await Logger.LogErrorAsync($"{ex.Message} | {ex.HttpStatusCode} | {stack}", false);
 
-                        await HandleUpdateAsync(client, update, _cts.Token);
-
-                        updateOffset = update.Id + 1;
+                        await Task.Delay(TimeSpan.FromMinutes(1));
                     }
                 }
             }
@@ -104,7 +115,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
     {
         lock (Settings)
         {
-            Logger = new TelegramLogger(Settings.LogSize, notification);
+            Logger = new TelegramLogger(notification);
         }
     }
 
@@ -261,7 +272,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                 break;
 
             default:
-                await client.SendTextMessageAsync(message.Chat.Id, Resource.UnknownCommand, cancellationToken: cancellationToken);
+                await Logger.LogErrorAsync(Resource.UnknownCommand);
                 break;
         }
     }
@@ -459,8 +470,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
                     break;
 
                 default:
-                    await client.SendTextMessageAsync(message.Chat.Id, Resource.UnknownCommand, cancellationToken: cancellationToken);
-                    await Logger.LogInformationAsync(string.Format(Resource.UnknownCommand_info, StripChatId(message.Chat.Id)));
+                    await Logger.LogErrorAsync(string.Format(Resource.UnknownCommand_info, StripChatId(message.Chat.Id)));
                     break;
             }
         }
@@ -562,7 +572,7 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
             {
                 await MuteUser(client, message, TimeSpan.FromSeconds(user.ThrottleTime), cancellationToken);
 
-                if (user.ThrottleTime < 60)
+                if (user.ThrottleTime < Timeout)
                 {
                     _ = Task.Run(async () =>
                     {
