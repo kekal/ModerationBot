@@ -736,9 +736,9 @@ public class BotLogic(string botToken, long? ownerId, TTBCT.IApplicationLifetime
             {
                 permissions.CanPinMessages = restrictedMember.CanPinMessages;
             }
-            if (!restrictedMember.CanSendMessages)
+            if (!restrictedMember.CanSendAudios)
             {
-                permissions.CanSendMessages = restrictedMember.CanSendMessages;
+                permissions.CanSendAudios = restrictedMember.CanSendAudios;
             }
             if (!restrictedMember.CanSendDocuments)
             {
